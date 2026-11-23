@@ -1,0 +1,115 @@
+name: Deploy Gizmos Bar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      API: https://api.supabase.com/v1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check setup
+        run: |
+          if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
+            echo "::error::Add the SUPABASE_ACCESS_TOKEN secret (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: Find Supabase project
+        run: |
+          projects=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects")
+          ref=$(echo "$projects" | jq -r '([.[] | select(.name | ascii_downcase | test("gizmo"))] + .)[0].id // empty')
+          if [ -z "$ref" ]; then echo "::error::No Supabase project found. Create one named gizmos-bar."; exit 1; fi
+          echo "REF=$ref" >> "$GITHUB_ENV"
+          echo "Using project $ref"
+          for i in $(seq 1 60); do
+            status=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects/$ref" | jq -r .status)
+            echo "status: $status"
+            [ "$status" = "ACTIVE_HEALTHY" ] && break
+            if [ "$status" = "INACTIVE" ]; then
+              curl -sf -X POST -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects/$ref/restore" || true
+            fi
+            sleep 10
+          done
+
+      - name: Apply database schema
+        run: |
+          jq -Rs '{query: .}' supabase/schema.sql > /tmp/q.json
+          curl -sf -X POST "$API/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/q.json > /dev/null
+
+      - name: Configure sign-in
+        run: |
+          site="https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/"
+          echo "SITE=$site" >> "$GITHUB_ENV"
+          jq -n --arg s "$site" '{site_url: $s, uri_allow_list: ($s + "**"), mailer_autoconfirm: true, external_email_enabled: true, disable_signup: false}' > /tmp/auth.json
+          curl -sf -X PATCH "$API/projects/$REF/config/auth" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" \
+            --data @/tmp/auth.json > /dev/null
+
+      - name: Set up push keys (first run only)
+        run: |
+          q() { jq -n --arg q "$1" '{query: $q}' | curl -sf -X POST "$API/projects/$REF/database/query" \
+                -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @-; }
+          existing=$(q "select value from public.app_config where key = 'vapid_public'" | jq -r '.[0].value // empty')
+          if [ -z "$existing" ]; then
+            keys=$(npx -y web-push@3.6.7 generate-vapid-keys --json)
+            pub=$(echo "$keys" | jq -r .publicKey)
+            priv=$(echo "$keys" | jq -r .privateKey)
+            echo "::add-mask::$priv"
+            jq -n --arg pub "$pub" --arg priv "$priv" --arg sub "$SITE" \
+              '[{name:"VAPID_PUBLIC_KEY",value:$pub},{name:"VAPID_PRIVATE_KEY",value:$priv},{name:"VAPID_SUBJECT",value:$sub}]' \
+              | curl -sf -X POST "$API/projects/$REF/secrets" \
+                  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @- > /dev/null
+            q "insert into public.app_config (key, value) values ('vapid_public', '$pub') on conflict (key) do update set value = excluded.value" > /dev/null
+            echo "Generated new push keys."
+          else
+            echo "Push keys already set."
+          fi
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy edge function
+        run: supabase functions deploy bar --project-ref "$REF" --no-verify-jwt --use-api
+
+      - name: Write site config
+        run: |
+          keys=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects/$REF/api-keys")
+          anon=$(echo "$keys" | jq -r '([.[] | select(.name == "anon")] + [.[] | select(.type == "publishable")])[0].api_key // empty')
+          if [ -z "$anon" ]; then echo "::error::Couldn't read the project's public key."; exit 1; fi
+          printf 'window.BAR_CONFIG = { url: "https://%s.supabase.co", anonKey: "%s" };\n' "$REF" "$anon" > site/config.js
+          npx -y qrcode@1.5.4 -o site/qr.png -w 800 -m 2 "$SITE"
+          sed -i "s/gizmos-bar-v1/gizmos-bar-${GITHUB_SHA::8}/" site/sw.js
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

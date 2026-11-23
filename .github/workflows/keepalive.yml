@@ -1,0 +1,32 @@
+name: Keep bar awake
+
+# Free Supabase projects pause after a week with no traffic. This pings it every 3 days.
+on:
+  schedule:
+    - cron: "17 15 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Ping database
+        run: |
+          API=https://api.supabase.com/v1
+          ref=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects" | jq -r '([.[] | select(.name | ascii_downcase | test("gizmo"))] + .)[0].id')
+          status=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects/$ref" | jq -r .status)
+          echo "status: $status"
+          if [ "$status" = "INACTIVE" ]; then
+            curl -sf -X POST -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects/$ref/restore"
+            echo "Project was paused; asked Supabase to wake it."
+          fi
+          key=$(curl -sf -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" "$API/projects/$ref/api-keys" | jq -r '([.[] | select(.name == "anon")] + [.[] | select(.type == "publishable")])[0].api_key')
+          curl -sf "https://$ref.supabase.co/rest/v1/settings?select=id" -H "apikey: $key"
+      - name: Stop GitHub from disabling this schedule after 60 quiet days
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/keepalive.yml/enable"
