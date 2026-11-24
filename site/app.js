@@ -59,7 +59,7 @@ const voter = (() => {
   } catch { return crypto.randomUUID(); }
 })();
 let ideaKind = "drink";
-const STATUS = { planned: "⚓ Planned", done: "✅ Done" };
+const STATUS = { considering: "⚓ In consideration", done: "✅ Done" };
 async function loadIdeas() {
   const { data, error } = await sb.rpc("request_board", { p_voter: voter });
   if (error) return;

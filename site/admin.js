@@ -448,7 +448,7 @@ async function loadRequests() {
       <div class="row"><span class="votes">👍 ${r.votes}</span>
         <span class="grow"><b>${esc(r.body)}</b><br><span class="small muted">${r.kind === "drink" ? "🍸 Drink" : "💡 Feature"}${r.author ? " · " + esc(r.author) : ""}${r.hidden ? " · hidden" : ""}</span></span></div>
       <div class="row" style="margin-top:10px">
-        <div class="seg seg3 grow">${["open", "planned", "done"].map((s) => `<button data-status="${s}" class="${r.status === s ? "on" : ""}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("")}</div>
+        <div class="seg seg3 grow">${[["open", "Open"], ["considering", "Considering"], ["done", "Done"]].map(([s, l]) => `<button data-status="${s}" class="${r.status === s ? "on" : ""}">${l}</button>`).join("")}</div>
         <button class="btn-ghost btn-small" data-hide="${r.hidden ? "0" : "1"}">${r.hidden ? "Unhide" : "Hide"}</button>
         <button class="btn-ghost btn-small del" data-del="1" aria-label="Delete">🗑</button>
       </div>
@@ -469,7 +469,15 @@ $("reqList").onclick = async (e) => {
   else return;
   const { error } = await sb.rpc("set_request", p);
   if (error) return toast("Couldn't save.");
-  toast(b.dataset.status ? `Marked ${b.dataset.status}` : (p.p_hidden ? "Hidden from guests" : "Showing to guests again"));
+  toast(b.dataset.status ? `Marked ${b.dataset.status === "considering" ? "in consideration" : b.dataset.status}` : (p.p_hidden ? "Hidden from guests" : "Showing to guests again"));
+  loadRequests();
+};
+$("resetIdeas").onclick = async () => {
+  const b = $("resetIdeas");
+  if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Tap again to delete every idea"; return; }
+  const { error } = await sb.rpc("reset_requests");
+  b.dataset.confirm = ""; b.textContent = "Reset all ideas";
+  toast(error ? "Couldn't reset." : "All ideas cleared. Fresh start!");
   loadRequests();
 };
 let crew = [];

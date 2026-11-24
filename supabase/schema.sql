@@ -551,7 +551,7 @@ create or replace function public.reset_leaderboard() returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_owner() then raise exception 'not allowed'; end if;
-  delete from public.tallies;
+  delete from public.tallies where true;
 end $$;
 grant execute on function public.reset_leaderboard() to anon, authenticated;
 
@@ -632,8 +632,8 @@ create or replace function public.reset_leaderboard() returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_owner() then raise exception 'not allowed'; end if;
-  delete from public.tallies;
-  delete from public.name_aliases;
+  delete from public.tallies where true;
+  delete from public.name_aliases where true;
 end $$;
 grant execute on function public.reset_leaderboard() to anon, authenticated;
 
@@ -645,7 +645,7 @@ create table if not exists public.requests (
   kind text not null default 'feature' check (kind in ('feature', 'drink')),
   author text not null default '' check (char_length(author) <= 40),
   voter text not null,
-  status text not null default 'open' check (status in ('open', 'planned', 'done')),
+  status text not null default 'open' check (status in ('open', 'considering', 'done')),
   hidden boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -773,8 +773,23 @@ create or replace function public.reset_leaderboard() returns void
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_owner() then raise exception 'not allowed'; end if;
-  delete from public.tallies;
-  delete from public.name_aliases;
-  delete from public.board_hidden;
+  delete from public.tallies where true;
+  delete from public.name_aliases where true;
+  delete from public.board_hidden where true;
 end $$;
 grant execute on function public.reset_leaderboard() to anon, authenticated;
+
+-- Ideas statuses (Jas, 2026-11-24): Open / In consideration / Done (replaces Planned).
+alter table public.requests drop constraint if exists requests_status_check;
+update public.requests set status = 'considering' where status = 'planned';
+alter table public.requests add constraint requests_status_check check (status in ('open', 'considering', 'done'));
+
+-- Owner can wipe every idea and vote.
+create or replace function public.reset_requests() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  delete from public.request_votes where true;
+  delete from public.requests where true;
+end $$;
+grant execute on function public.reset_requests() to anon, authenticated;

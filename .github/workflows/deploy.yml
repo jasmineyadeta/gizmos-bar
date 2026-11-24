@@ -129,6 +129,21 @@ jobs:
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.result[]? | "\(.timestamp) \(.event_message)"' | head -40 || true
           [ "${code:0:1}" = "2" ]
 
+      - name: End-to-end checks (everything rolled back)
+        run: |
+          q() { jq -n --arg q "$1" '{query: $q}' > /tmp/q.json
+                curl -s -o /tmp/q.out -w '%{http_code}' -X POST "$API/projects/$REF/database/query" \
+                  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/q.json; }
+          # The website's requests run with pg_safeupdate (no UPDATE/DELETE without WHERE). Run the checks the same way.
+          code=$(q "begin; load 'safeupdate'; create temp table t (x int); insert into t values (1); delete from t; rollback;")
+          echo "safeupdate probe -> $code $(cat /tmp/q.out)"
+          prefix=""
+          if grep -qi "where clause" /tmp/q.out; then prefix="load 'safeupdate';"; else echo "::warning::Couldn't turn on safeupdate for the checks"; fi
+          code=$(q "$prefix
+          $(cat tests/e2e.sql)")
+          echo "e2e -> $code"; cat /tmp/q.out; echo
+          [ "${code:0:1}" = "2" ] || { echo "::error::End-to-end check failed: $(jq -r '.message // .' /tmp/q.out 2>/dev/null | head -c 400)"; exit 1; }
+
       - name: Smoke test ordering through the function
         run: |
           anon=$(sed -n 's/.*anonKey: "\([^"]*\)".*/\1/p' site/config.js)
