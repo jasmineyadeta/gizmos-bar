@@ -137,8 +137,12 @@ function renderStock() {
   $("stockBadge").textContent = outCount;
   $("stockBadge").classList.toggle("hidden", !outCount);
   $("stockList").innerHTML = grouped().map(([g, list]) => `<h3 class="grp-h">${esc(g)}</h3>` + list.map((i) => {
-    const n = usedBy(i.key).length;
-    const hint = n ? (i.in_stock ? `Used in ${n} drink${n > 1 ? "s" : ""}` : `${n} drink${n > 1 ? "s" : ""} hidden from guests`) : "Not used in any drink yet";
+    const need = usedBy(i.key).map((d) => d.name);
+    const garnish = menu.filter((d) => !need.includes(d.name) && (d.recipe || []).some((r) => r.key === i.key)).map((d) => d.name);
+    const hint = [
+      need.length ? `${i.in_stock ? "Needed for" : "Hidden from guests"}: ${need.map(esc).join(", ")}` : "",
+      garnish.length ? `Garnish on: ${garnish.map(esc).join(", ")}` : "",
+    ].filter(Boolean).join("<br>") || "Not in any drink yet";
     return `<button class="ing ${i.in_stock ? "" : "out"}" data-ing="${esc(i.key)}">
       <span class="t"><span class="n">${esc(i.name)}</span><br><span class="d">${hint}</span></span>
       <span class="st">${i.in_stock ? "Got it" : "Out"}</span>
@@ -175,14 +179,61 @@ const TAGS = [["fizzy", "🫧 Fizzy"], ["citrusy", "🍋 Citrusy"], ["strong", "
 const PLACEHOLDER = "drinks/placeholder.svg";
 const tagChips = (tags, attr) => TAGS.map(([k, l]) =>
   `<button type="button" class="chip ${(tags || []).includes(k) ? "on" : ""}" ${attr}="${k}">${l}</button>`).join("");
-const needChips = (needs, attr) => grouped().map(([g, list]) => `<h4 class="grp-h">${esc(g)}</h4><div class="chips small">` +
-  list.map((i) => `<button type="button" class="chip ${(needs || []).includes(i.key) ? "on" : ""}" ${attr}="${esc(i.key)}">${esc(i.name)}</button>`).join("") +
-  `</div>`).join("");
-const needsNote = (d) => {
-  const ns = d.needs || [];
-  if (!ns.length) return "Nothing picked, so it never switches off on its own.";
-  return ns.map((k) => ingredients.find((i) => i.key === k && !i.in_stock) ? `<b>${esc(ingName(k))} (out)</b>` : esc(ingName(k))).join(", ");
+
+// ----- Recipes: one row per ingredient {key, amt, as}. Mirrors the SQL trigger. -----
+const AMOUNTS = ["1/4 oz", "1/2 oz", "3/4 oz", "1 oz", "1 1/2 oz", "2 oz", "3 oz", "4 oz", "1 dash", "2 dashes", "3 dashes",
+  "1/2 tsp", "1 tsp", "splash", "to top", "to taste", "garnish", "optional"];
+const isOpt = (amt) => /garnish|optional|taste/i.test(amt || "");
+const label = (r) => (r.as || "").trim() || (r.key ? ingName(r.key) : "");
+const rowText = (r) => {
+  const a = (r.amt || "").trim(), l = label(r);
+  return !a ? l : /^(to |garnish|optional)/i.test(a) ? `${l}, ${a}` : `${a} ${l}`;
 };
+const recipeText = (rec) => rec.map(rowText).join(" · ").slice(0, 500);
+const recipeNeeds = (rec) => [...new Set(rec.filter((r) => r.key && !isOpt(r.amt)).map((r) => r.key))];
+const isMissing = (k) => ingredients.some((i) => i.key === k && !i.in_stock);
+const recipeSummary = (d) => {
+  const rec = d.recipe || [];
+  if (!rec.length) return esc(d.description || "No recipe yet. Tap to add ingredients.");
+  return rec.map((r) => r.key && !isOpt(r.amt) && isMissing(r.key) ? `<b>${esc(rowText(r))} (out)</b>` : esc(rowText(r))).join(" · ");
+};
+const ingOptions = (sel) => `<option value="" ${!sel ? "selected" : ""}>Other (type it below)</option>` +
+  grouped().map(([g, list]) => `<optgroup label="${esc(g)}">` +
+    list.map((i) => `<option value="${esc(i.key)}" ${i.key === sel ? "selected" : ""}>${esc(i.name)}</option>`).join("") + `</optgroup>`).join("");
+const recipeRow = (r = {}) => `<div class="rrow">
+    <select data-r="key" aria-label="Ingredient">${ingOptions(r.key)}</select>
+    <input data-r="amt" list="amts" value="${esc(r.amt || "")}" placeholder="Amount" aria-label="Amount" autocapitalize="off">
+    <button type="button" class="rdel" data-rdel aria-label="Remove ingredient">✕</button>
+    <input data-r="as" class="ras" value="${esc(r.as || "")}" maxlength="60" placeholder="Guests see: ${esc(r.key ? ingName(r.key) : "type the ingredient")}" aria-label="What guests see">
+  </div>`;
+const recipeEditor = (rec) => `<div class="rlist">${(rec.length ? rec : [{}]).map(recipeRow).join("")}</div>
+  <button type="button" class="btn-ghost btn-small" data-radd>+ Add ingredient</button>
+  <p class="small muted" style="margin:6px 0 0">Use "garnish" or "optional" as the amount for things that shouldn't switch the drink off.</p>`;
+const readRecipe = (box) => [...box.querySelectorAll(".rrow")].map((row) => ({
+  key: row.querySelector('[data-r="key"]').value,
+  amt: row.querySelector('[data-r="amt"]').value.trim(),
+  as: row.querySelector('[data-r="as"]').value.trim(),
+})).filter((r) => r.key || r.as);
+
+// Shared row behaviour for the add form and every drink card. Returns true when the recipe changed.
+function recipeEvent(e) {
+  const box = e.target.closest("[data-recipe]");
+  if (!box) return false;
+  if (e.type === "click" && e.target.closest("[data-radd]")) {
+    box.querySelector(".rlist").insertAdjacentHTML("beforeend", recipeRow());
+    box.querySelector(".rrow:last-child select").focus();
+    return false;
+  }
+  if (e.type === "click" && e.target.closest("[data-rdel]")) { e.target.closest(".rrow").remove(); return true; }
+  if (e.type === "change" && e.target.dataset.r === "key") {
+    const as = e.target.closest(".rrow").querySelector('[data-r="as"]');
+    as.value = ""; // wording belonged to the old ingredient
+    as.placeholder = `Guests see: ${e.target.value ? ingName(e.target.value) : "type the ingredient"}`;
+    if (!e.target.value) as.focus();
+    return true;
+  }
+  return e.type === "change" && !!e.target.dataset.r;
+}
 
 // Shrink a photo on the phone to a small square JPEG so it loads fast for guests.
 async function photoToDataUrl(file) {
@@ -203,8 +254,9 @@ async function loadMenu() {
 }
 function renderMenu() {
   $("cats").innerHTML = [...new Set(menu.map((d) => d.category))].map((c) => `<option value="${esc(c)}">`).join("");
+  $("amts").innerHTML = AMOUNTS.map((a) => `<option value="${a}">`).join("");
   if (!$("mTags").children.length) $("mTags").innerHTML = tagChips(newTags, "data-ntag");
-  $("mNeeds").innerHTML = needChips(newNeeds, "data-nneed");
+  if (!$("mRecipe").children.length) $("mRecipe").innerHTML = recipeEditor([]);
   const open = new Set([...document.querySelectorAll("#menuList details[open]")].map((x) => x.closest("[data-id]").dataset.id));
   $("menuList").innerHTML = menu.map((d) => `
     <div class="card stack" data-id="${d.id}">
@@ -213,9 +265,9 @@ function renderMenu() {
         <input class="grow" data-f="name" value="${esc(d.name)}" maxlength="80" aria-label="Drink name">
         <label class="switch" title="Available"><input type="checkbox" data-f="available" ${d.available ? "checked" : ""}><span></span></label>
       </div>
-      <input data-f="description" value="${esc(d.description)}" maxlength="500" placeholder="Description" aria-label="Description">
+      <details class="needs" ${open.has(d.id) ? "open" : ""}><summary><span class="needs-note">${recipeSummary(d)}</span> <span class="edit-link">Edit recipe</span></summary>
+        <div data-recipe>${recipeEditor(d.recipe || [])}</div></details>
       <div class="chips small">${tagChips(d.tags, "data-tag")}</div>
-      <details class="needs" ${open.has(d.id) ? "open" : ""}><summary>Needs: <span class="needs-note">${needsNote(d)}</span></summary>${needChips(d.needs, "data-need")}</details>
       <div class="row">
         <input class="grow" data-f="category" value="${esc(d.category)}" list="cats" maxlength="40" aria-label="Section">
         <input style="width:90px" data-f="stock" type="number" min="0" inputmode="numeric" value="${d.stock ?? ""}" placeholder="No limit" aria-label="How many left">
@@ -231,11 +283,20 @@ async function saveItem(id, patch, msg = "Saved") {
   toast(msg);
   return true;
 }
+async function saveRecipe(card) {
+  const d = menu.find((x) => x.id === card.dataset.id);
+  const recipe = readRecipe(card.querySelector("[data-recipe]"));
+  if (!(await saveItem(d.id, { recipe }, "Recipe saved"))) return;
+  d.needs = recipeNeeds(recipe); d.description = recipeText(recipe); // the database works these out the same way
+  card.querySelector(".needs-note").innerHTML = recipeSummary(d);
+  renderStock();
+}
 const toggle = (arr, k) => (arr || []).includes(k) ? arr.filter((x) => x !== k) : [...(arr || []), k];
 
 $("menuList").addEventListener("change", async (e) => {
   const card = e.target.closest("[data-id]");
   if (!card) return;
+  if (recipeEvent(e)) return saveRecipe(card);
   if (e.target.hasAttribute("data-img")) {
     const file = e.target.files[0]; if (!file) return;
     showLoader("Saving photo...");
@@ -256,11 +317,11 @@ $("menuList").addEventListener("change", async (e) => {
 $("menuList").addEventListener("click", async (e) => {
   const card = e.target.closest("[data-id]");
   if (!card) return;
+  if (recipeEvent(e)) return saveRecipe(card);
   const d = menu.find((x) => x.id === card.dataset.id);
-  const t = e.target.closest("[data-tag],[data-need]");
+  const t = e.target.closest("[data-tag]");
   if (t) {
-    const patch = t.dataset.tag ? { tags: toggle(d.tags, t.dataset.tag) } : { needs: toggle(d.needs, t.dataset.need) };
-    if (await saveItem(d.id, patch)) { renderMenu(); renderStock(); }
+    if (await saveItem(d.id, { tags: toggle(d.tags, t.dataset.tag) })) t.classList.toggle("on");
     return;
   }
   if (!e.target.hasAttribute("data-del")) return;
@@ -269,9 +330,10 @@ $("menuList").addEventListener("click", async (e) => {
   await loadMenu(); renderStock();
 });
 
-let newTags = [], newNeeds = [], newImage = null;
+let newTags = [], newImage = null;
 $("mTags").onclick = (e) => { const b = e.target.closest("[data-ntag]"); if (!b) return; newTags = toggle(newTags, b.dataset.ntag); b.classList.toggle("on"); };
-$("mNeeds").onclick = (e) => { const b = e.target.closest("[data-nneed]"); if (!b) return; newNeeds = toggle(newNeeds, b.dataset.nneed); b.classList.toggle("on"); };
+$("mRecipe").addEventListener("click", recipeEvent);
+$("mRecipe").addEventListener("change", recipeEvent);
 $("mImg").onchange = async () => {
   const file = $("mImg").files[0]; if (!file) return;
   try { newImage = await photoToDataUrl(file); $("mImgPrev").src = newImage; } catch { toast("Couldn't read that photo."); }
@@ -279,13 +341,15 @@ $("mImg").onchange = async () => {
 $("addForm").onsubmit = async (e) => {
   e.preventDefault();
   const stock = $("mStock").value === "" ? null : parseInt($("mStock").value, 10);
+  const recipe = readRecipe($("mRecipe"));
   const { error } = await sb.from("menu_items").insert({
-    name: $("mName").value.trim(), description: $("mDesc").value.trim(), category: $("mCat").value.trim() || "Cocktails",
-    stock, available: stock !== 0, sort: menu.length + 1, image: newImage, tags: newTags, needs: newNeeds,
+    name: $("mName").value.trim(), category: $("mCat").value.trim() || "Cocktails",
+    stock, available: stock !== 0, sort: menu.length + 1, image: newImage, tags: newTags,
+    recipe, needs: recipeNeeds(recipe), description: recipeText(recipe),
   });
   if (error) return toast("Couldn't add that drink.");
-  $("mName").value = ""; $("mDesc").value = ""; $("mStock").value = ""; $("mImg").value = "";
-  newTags = []; newNeeds = []; newImage = null; $("mImgPrev").src = PLACEHOLDER; $("mTags").innerHTML = "";
+  $("mName").value = ""; $("mStock").value = ""; $("mImg").value = "";
+  newTags = []; newImage = null; $("mImgPrev").src = PLACEHOLDER; $("mTags").innerHTML = ""; $("mRecipe").innerHTML = "";
   toast("Added to the menu");
   await loadMenu(); renderStock();
 };

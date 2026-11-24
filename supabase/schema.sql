@@ -365,3 +365,66 @@ begin
 end $$;
 revoke execute on function public.place_order(text, uuid, text) from public, anon, authenticated;
 grant execute on function public.place_order(text, uuid, text) to service_role;
+
+-- Recipes: one row per ingredient ({key, amt, as}). The recipe is the source of truth:
+-- a trigger derives the guest-facing description and the stock "needs" from it.
+-- Rows whose amount says garnish / optional / to taste don't switch a drink off.
+alter table public.menu_items add column if not exists recipe jsonb not null default '[]';
+
+insert into public.ingredients (key, name, grp, sort) values
+  ('oranges','Oranges','Fruit & garnish',29), ('celery','Celery','Fruit & garnish',30),
+  ('hot_sauce','Tabasco / Worcestershire','Pantry',40), ('salt','Salt','Pantry',41), ('nutmeg','Nutmeg','Pantry',42)
+on conflict (key) do nothing;
+
+create or replace function public.recipe_row_optional(amt text) returns boolean
+language sql immutable as $$ select coalesce(amt, '') ~* '(garnish|optional|taste)' $$;
+
+create or replace function public.menu_items_from_recipe() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if jsonb_typeof(new.recipe) = 'array' and jsonb_array_length(new.recipe) > 0 then
+    select coalesce(array_agg(distinct r->>'key') filter (
+             where coalesce(r->>'key', '') <> '' and not public.recipe_row_optional(r->>'amt')), '{}'),
+           left(coalesce(string_agg(
+             case when coalesce(r->>'amt', '') = '' then lbl
+                  when (r->>'amt') ~* '^(to |garnish|optional)' then lbl || ', ' || (r->>'amt')
+                  else (r->>'amt') || ' ' || lbl end, ' · ' order by ord), ''), 500)
+      into new.needs, new.description
+      from (select r, ord, coalesce(nullif(trim(r->>'as'), ''), i.name, '') as lbl
+              from jsonb_array_elements(new.recipe) with ordinality as e(r, ord)
+              left join public.ingredients i on i.key = r->>'key') x;
+  end if;
+  return new;
+end $$;
+drop trigger if exists menu_items_recipe on public.menu_items;
+create trigger menu_items_recipe before insert or update of recipe on public.menu_items
+  for each row execute function public.menu_items_from_recipe();
+
+do $$
+begin
+  if not exists (select 1 from public.seed_log where key = 'gizmo-recipe-v1') then
+    update public.menu_items m set recipe = v.recipe from (values
+      ('Gin & Tonic / Bacardi & Coke etc.', '[{"key": "", "amt": "1 oz", "as": "Gin, rum or vodka"}, {"key": "mixers", "amt": "3 oz", "as": "Tonic or cola"}, {"key": "lemons", "amt": "garnish", "as": "Lemon slice"}]'::jsonb),
+      ('Dry Martini', '[{"key": "gin", "amt": "2 oz", "as": ""}, {"key": "dry_vermouth", "amt": "1/2 oz", "as": ""}, {"key": "bitters", "amt": "1 dash", "as": ""}, {"key": "lemons", "amt": "garnish", "as": "Lemon twist"}]'::jsonb),
+      ('Tom Collins', '[{"key": "gin", "amt": "2 oz", "as": "Dry gin"}, {"key": "lemons", "amt": "1 oz", "as": "Lemon juice"}, {"key": "sugar", "amt": "1/2 oz", "as": "Simple syrup"}, {"key": "soda", "amt": "to top", "as": ""}, {"key": "lemons", "amt": "garnish", "as": "Lemon slice"}, {"key": "cherries", "amt": "garnish", "as": "Maraschino cherry"}]'::jsonb),
+      ('Martinez', '[{"key": "gin", "amt": "1 oz", "as": ""}, {"key": "sweet_vermouth", "amt": "1 oz", "as": ""}, {"key": "bitters", "amt": "3 dashes", "as": ""}, {"key": "cherries", "amt": "1 tsp", "as": "Maraschino juice"}, {"key": "lemons", "amt": "garnish", "as": "Lemon twist"}]'::jsonb),
+      ('Negroni', '[{"key": "gin", "amt": "1 oz", "as": ""}, {"key": "campari", "amt": "1 oz", "as": ""}, {"key": "sweet_vermouth", "amt": "1 oz", "as": ""}, {"key": "oranges", "amt": "garnish", "as": "Orange peel"}]'::jsonb),
+      ('French 75', '[{"key": "gin", "amt": "1 oz", "as": ""}, {"key": "lemons", "amt": "1/2 oz", "as": "Lemon juice"}, {"key": "sugar", "amt": "1/2 oz", "as": "Simple syrup"}, {"key": "sparkling", "amt": "3 oz", "as": ""}, {"key": "lemons", "amt": "garnish", "as": "Lemon twist"}]'::jsonb),
+      ('Kir Royale', '[{"key": "cassis", "amt": "1/2 oz", "as": ""}, {"key": "sparkling", "amt": "to top", "as": ""}]'::jsonb),
+      ('Cosmopolitan', '[{"key": "vodka", "amt": "1 1/2 oz", "as": ""}, {"key": "triple_sec", "amt": "3/4 oz", "as": ""}, {"key": "limes", "amt": "3/4 oz", "as": "Lime juice"}, {"key": "cranberry", "amt": "1/2 oz", "as": ""}, {"key": "limes", "amt": "garnish", "as": "Lime wedge"}]'::jsonb),
+      ('Moscow Mule', '[{"key": "vodka", "amt": "2 oz", "as": ""}, {"key": "limes", "amt": "1/2 oz", "as": "Lime juice"}, {"key": "ginger_beer", "amt": "3 oz", "as": ""}, {"key": "limes", "amt": "garnish", "as": "Lime slice"}]'::jsonb),
+      ('Caesar', '[{"key": "vodka", "amt": "2 oz", "as": ""}, {"key": "clamato", "amt": "4 oz", "as": "Clamato juice"}, {"key": "hot_sauce", "amt": "to taste", "as": ""}, {"key": "limes", "amt": "garnish", "as": "Lime or lemon slice"}, {"key": "celery", "amt": "optional", "as": "Celery stalk"}]'::jsonb),
+      ('Screwdriver', '[{"key": "vodka", "amt": "1 1/2 oz", "as": ""}, {"key": "orange_juice", "amt": "to top", "as": ""}]'::jsonb),
+      ('Tequila Sunrise', '[{"key": "tequila", "amt": "2 oz", "as": ""}, {"key": "orange_juice", "amt": "4 oz", "as": ""}, {"key": "grenadine", "amt": "1/4 oz", "as": ""}, {"key": "oranges", "amt": "garnish", "as": "Orange slice"}, {"key": "cherries", "amt": "garnish", "as": "Cherry"}]'::jsonb),
+      ('Margarita', '[{"key": "tequila", "amt": "1 1/2 oz", "as": ""}, {"key": "triple_sec", "amt": "1/2 oz", "as": ""}, {"key": "limes", "amt": "1 oz", "as": "Lime juice"}, {"key": "limes", "amt": "garnish", "as": "Lime slice"}, {"key": "salt", "amt": "optional", "as": "Salt rim"}]'::jsonb),
+      ('Mojito', '[{"key": "mint", "amt": "3", "as": "Mint leaves"}, {"key": "sugar", "amt": "1/2 oz", "as": "Simple syrup"}, {"key": "light_rum", "amt": "2 oz", "as": "White rum"}, {"key": "limes", "amt": "3/4 oz", "as": "Lime juice"}, {"key": "soda", "amt": "to top", "as": ""}, {"key": "mint", "amt": "garnish", "as": "Mint sprig"}, {"key": "limes", "amt": "garnish", "as": "Lime slice"}]'::jsonb),
+      ('Hurricane', '[{"key": "light_rum", "amt": "1 oz", "as": ""}, {"key": "dark_rum", "amt": "1 oz", "as": ""}, {"key": "navy_rum", "amt": "1 oz", "as": ""}, {"key": "sugar", "amt": "1/2 oz", "as": "Simple syrup"}, {"key": "passion_pineapple", "amt": "1/2 oz", "as": "Passion fruit pur\u00e9e or pineapple juice"}, {"key": "orange_juice", "amt": "1 oz", "as": ""}, {"key": "limes", "amt": "1 oz", "as": "Lime juice"}, {"key": "grenadine", "amt": "1/2 tsp", "as": ""}, {"key": "oranges", "amt": "garnish", "as": "Orange slice"}, {"key": "cherries", "amt": "garnish", "as": "Cherry"}]'::jsonb),
+      ('Daiquiri', '[{"key": "light_rum", "amt": "2 oz", "as": "Light rum"}, {"key": "limes", "amt": "1 oz", "as": "Lime juice"}, {"key": "sugar", "amt": "3/4 oz", "as": "Demerara syrup"}, {"key": "limes", "amt": "garnish", "as": "Lime twist"}]'::jsonb),
+      ('Manhattan', '[{"key": "whiskey", "amt": "2 oz", "as": "Rye whiskey"}, {"key": "sweet_vermouth", "amt": "1 oz", "as": ""}, {"key": "bitters", "amt": "2 dashes", "as": ""}, {"key": "cherries", "amt": "garnish", "as": "Brandied cherry or lemon slice"}]'::jsonb),
+      ('Old Fashioned', '[{"key": "sugar", "amt": "1 tsp", "as": "Sugar"}, {"key": "bitters", "amt": "3 dashes", "as": ""}, {"key": "", "amt": "1 tsp", "as": "Water"}, {"key": "whiskey", "amt": "2 oz", "as": "Bourbon or rye"}, {"key": "oranges", "amt": "garnish", "as": "Orange twist"}]'::jsonb),
+      ('Whisky Mac', '[{"key": "scotch", "amt": "1 1/2 oz", "as": "Blended Scotch"}, {"key": "ginger_wine", "amt": "1 oz", "as": "Stone''s green ginger wine"}]'::jsonb),
+      ('Brandy Sangaree', '[{"key": "sugar", "amt": "1/2 tsp", "as": "Sugar"}, {"key": "", "amt": "1 tsp", "as": "Water"}, {"key": "brandy", "amt": "2 oz", "as": ""}, {"key": "port", "amt": "1 oz", "as": "Port wine"}, {"key": "nutmeg", "amt": "garnish", "as": "Grated nutmeg"}]'::jsonb)
+    ) as v(name, recipe) where m.name = v.name and m.recipe = '[]'::jsonb;
+    insert into public.seed_log (key) values ('gizmo-recipe-v1');
+  end if;
+end $$;

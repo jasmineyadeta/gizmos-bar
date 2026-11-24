@@ -68,16 +68,15 @@
             <p class="small muted" style="margin:6px 0 0">Optional. A cartoon glass shows if you skip it.</p></div>
           </div>
           <div><label for="mName">Name</label><input id="mName" maxlength="80" required></div>
-          <div><label for="mDesc">Description (optional)</label><input id="mDesc" maxlength="300"></div>
+          <div><label>Recipe <span class="small">(one line per ingredient)</span></label><div id="mRecipe" data-recipe></div><datalist id="amts"></datalist></div>
           <div><label>What it tastes like</label><div class="chips small" id="mTags"></div></div>
-          <details class="needs"><summary>What it needs <span class="muted small">(so it switches off when you run out)</span></summary><div id="mNeeds"></div></details>
           <div class="row">
             <div class="grow"><label for="mCat">Section</label><input id="mCat" maxlength="40" list="cats" value="Cocktails" required><datalist id="cats"></datalist></div>
             <div style="width:120px"><label for="mStock">How many left</label><input id="mStock" type="number" min="0" inputmode="numeric" placeholder="No limit"></div>
           </div>
           <button class="btn">Add to menu</button>
         </form>
-        <p class="small muted">Flip the switch to show a drink as available. Tap a drink's photo to change it. "Left" counts down with each order, and the drink switches off at zero. Leave it blank for no limit.</p>
+        <p class="small muted">Flip the switch to show a drink as available. Tap a drink's photo to change it, or its recipe to swap an ingredient. "Left" counts down with each order, and the drink switches off at zero. Leave it blank for no limit.</p>
         <div id="menuList"></div>
       </section>
 

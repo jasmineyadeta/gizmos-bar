@@ -138,7 +138,9 @@ $("surprise").onclick = async () => {
 function openDrink(d, surprise) {
   picked = d;
   $("sheetName").textContent = (surprise ? "🎲 " : "") + picked.name;
-  $("sheetDesc").textContent = picked.description;
+  const parts = (picked.description || "").split(" · ").filter(Boolean);
+  $("sheetDesc").innerHTML = parts.length > 1
+    ? `<ul class="recipe">${parts.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : esc(parts[0] || "");
   $("sheetImg").src = picked.image || PLACEHOLDER;
   $("notes").value = "";
   openSheet(true);

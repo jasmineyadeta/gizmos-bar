@@ -179,3 +179,17 @@ a { color: var(--accent); }
 .circ.on .ring { border-color: var(--accent); }
 .moodrow { gap: 8px; }
 .moodrow .chip { flex: none; white-space: nowrap; font-size: 14px; padding: 7px 12px; }
+
+/* Recipe editor */
+.rrow { display: grid; grid-template-columns: minmax(0,1fr) 112px 40px; gap: 6px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.rrow select, .rrow input { padding: 10px; font-size: 16px; }
+.rrow .ras { grid-column: 1 / -1; padding: 7px 10px; font-size: 14px; color: var(--muted); background: transparent; }
+.rdel { padding: 0; height: 40px; background: transparent; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; font-weight: 400; }
+[data-recipe] > .btn-small { margin-top: 10px; }
+.needs summary { list-style: none; line-height: 1.4; }
+.needs summary::-webkit-details-marker { display: none; }
+.needs .edit-link { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.needs[open] .edit-link { display: none; }
+.recipe { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 16px; font-size: 14px; }
+.recipe li { break-inside: avoid; padding: 2px 0 2px 12px; position: relative; }
+.recipe li::before { content: "•"; position: absolute; left: 0; color: var(--accent); }
