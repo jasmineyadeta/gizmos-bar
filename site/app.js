@@ -20,14 +20,15 @@ async function load(first) {
   const [s, m, ing] = await Promise.all([
     sb.from("settings").select("*").eq("id", 1).single(),
     sb.from("menu_items").select("*").order("sort").order("name"),
-    sb.from("ingredients").select("key, name").eq("in_stock", false),
+    sb.from("ingredients").select("key, name, in_stock, top_shelf"),
   ]);
   if (first) await sleep(Math.max(0, 1200 - (Date.now() - started)));
   hideLoader();
   if (s.error || m.error) { toast("Couldn't reach the bar. Pull down to retry."); return; }
   settings = s.data;
   menu = m.data;
-  missing = new Map((ing.data || []).map((x) => [x.key, x.name]));
+  missing = new Map((ing.data || []).filter((x) => !x.in_stock).map((x) => [x.key, x.name]));
+  topShelf = new Map((ing.data || []).filter((x) => x.in_stock && x.top_shelf).map((x) => [x.key, x.top_shelf]));
   render();
 }
 
@@ -56,6 +57,7 @@ const MOODS = [
 let mood = null;
 let spirit = null;
 let missing = new Map();
+let topShelf = new Map();
 const PLACEHOLDER = "drinks/placeholder.svg";
 const isOut = (d) => !d.available || d.stock === 0 || (d.needs || []).some((k) => missing.has(k));
 
@@ -144,6 +146,10 @@ function openDrink(d, surprise) {
   $("sheetImg").src = picked.image || PLACEHOLDER;
   $("sheetImg").classList.toggle("contain", $("sheetImg").src.endsWith(".svg"));
   $("notes").value = "";
+  const bottles = [...new Set((d.needs || []).filter((k) => topShelf.has(k)).map((k) => topShelf.get(k)))];
+  $("topOpt").classList.toggle("hidden", !bottles.length);
+  $("topName").textContent = bottles.length ? `(${bottles.join(", ")})` : "";
+  $("topChk").checked = false;
   openSheet(true);
 }
 
@@ -165,7 +171,7 @@ $("orderBtn").onclick = async () => {
   showLoader("Sending to Gizmo...");
   const started = Date.now();
   try {
-    const { id } = await callFn({ action: "order", name, item_id: picked.id, notes: $("notes").value });
+    const { id } = await callFn({ action: "order", name, item_id: picked.id, notes: $("notes").value, top_shelf: $("topChk").checked && !$("topOpt").classList.contains("hidden") });
     await sleep(Math.max(0, 1800 - (Date.now() - started)));
     hideLoader();
     showPlaced(name, picked.name, id);

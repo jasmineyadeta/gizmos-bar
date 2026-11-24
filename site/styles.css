@@ -242,3 +242,19 @@ a { color: var(--accent); }
   #stockList { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .sheet-img.contain { object-fit: contain; background: #0f1d33; }
+
+/* Stock rows with three states */
+.ing { display: block; cursor: default; }
+.ing .t { margin-bottom: 10px; }
+.seg3 { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.seg3 button { background: transparent; color: var(--muted); padding: 11px 4px; border-radius: 9px; font-size: 15px; }
+.ing.in .seg3 .on { background: var(--good); color: #0a2418; }
+.ing.low .seg3 .on { background: #f0a440; color: #2a1605; }
+.ing.out .seg3 .on { background: var(--bad); color: #2a0b07; }
+.ing.low { border-color: #8a6326; }
+.ing.out { border-color: #6a3a40; background: #24203a; }
+.topshelf { display: block; margin: 10px 0 0; font-size: 13px; color: var(--accent); }
+.topshelf input { margin-top: 4px; padding: 9px 10px; font-size: 15px; }
+.order .top { color: var(--accent); font-weight: 700; font-size: 15px; }
+.topshelf-opt { display: flex; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--brass); border-radius: 12px; padding: 12px; margin: 0; color: var(--text); font-size: 15px; cursor: pointer; }
+.topshelf-opt input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); }

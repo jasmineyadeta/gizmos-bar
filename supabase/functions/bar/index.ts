@@ -1,5 +1,5 @@
 // Gizmos Bar edge function.
-//   { action: "order", name, item_id, notes }  -> places an order, pushes to Gizmo
+//   { action: "order", name, item_id, notes, top_shelf? }  -> places an order, pushes to Gizmo
 //   { action: "test" } (owner auth header)      -> sends a test push
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
@@ -74,15 +74,16 @@ Deno.serve(async (req) => {
     if (!name) return json({ error: "Please tell Gizmo your name." }, 400);
     if (!/^[0-9a-f-]{36}$/i.test(item)) return json({ error: "Pick a drink." }, 400);
 
-    const { data: order, error } = await admin.rpc("place_order", { p_name: name, p_item: item, p_notes: notes });
+    const top = body.top_shelf === true;
+    const { data: order, error } = await admin.rpc("place_order", { p_name: name, p_item: item, p_notes: notes, p_top: top });
     if (error) {
       const key = Object.keys(friendly).find((k) => error.message.includes(k));
       return json({ error: key ? friendly[key] : "Something went wrong. Try again?" }, key ? 409 : 500);
     }
-    const o = order as { id: string; guest_name: string; item_name: string; notes: string };
+    const o = order as { id: string; guest_name: string; item_name: string; notes: string; top_shelf: string | null };
     await pushAll({
       title: "THIS PERSON NEEDS A DRINK",
-      body: `${o.guest_name} ordered ${o.item_name}${o.notes ? ` (${o.notes})` : ""}`,
+      body: `${o.guest_name} ordered ${o.item_name}${o.top_shelf ? ` ⭐ top shelf: ${o.top_shelf}` : ""}${o.notes ? ` (${o.notes})` : ""}`,
       url: "./admin.html",
       tag: o.id,
     });

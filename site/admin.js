@@ -96,7 +96,8 @@ async function loadOrders() {
   const open = new Set([...document.querySelectorAll("#orders details[open]")].map((d) => d.dataset.order));
   const howTo = (o) => {
     const d = menu.find((x) => x.id === o.item_id);
-    const rows = d?.recipe?.length ? d.recipe.map(rowText) : (d?.description || "").split(" · ").filter(Boolean);
+    const lowMark = (r) => ingredients.some((i) => i.key === r.key && i.low && i.in_stock) ? " (running low)" : "";
+    const rows = d?.recipe?.length ? d.recipe.map((r) => rowText(r) + lowMark(r)) : (d?.description || "").split(" · ").filter(Boolean);
     if (!rows.length) return "";
     return `<details class="howto" data-order="${o.id}" ${open.has(o.id) ? "open" : ""}><summary>How to make it</summary>
       <ul class="recipe">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></details>`;
@@ -108,6 +109,7 @@ async function loadOrders() {
         <div class="t">
           <div class="who">${esc(o.guest_name)}</div>
           <div class="what">${esc(o.item_name)}</div>
+          ${o.top_shelf ? `<div class="top">⭐ Top shelf: ${esc(o.top_shelf)}</div>` : ""}
           ${o.notes ? `<div class="note">"${esc(o.notes)}"</div>` : ""}
           <div class="time">Ordered ${clock(o.created_at)} · ${ago(o.created_at)}</div>
         </div>
@@ -149,35 +151,57 @@ async function loadIngredients() {
   const { data } = await sb.from("ingredients").select("*").order("sort").order("name");
   ingredients = data || [];
 }
+const TOP_SHELF_GROUPS = ["Spirits"];
+const stateOf = (i) => !i.in_stock ? "out" : i.low ? "low" : "in";
 function renderStock() {
   const outCount = ingredients.filter((i) => !i.in_stock).length;
   $("stockBadge").textContent = outCount;
   $("stockBadge").classList.toggle("hidden", !outCount);
   $("stockList").innerHTML = grouped().map(([g, list]) => `<h3 class="grp-h">${esc(g)}</h3>` + list.map((i) => {
+    const st = stateOf(i);
     const need = usedBy(i.key).map((d) => d.name);
     const garnish = menu.filter((d) => !need.includes(d.name) && (d.recipe || []).some((r) => r.key === i.key)).map((d) => d.name);
     const hint = [
-      need.length ? `${i.in_stock ? "Needed for" : "Hidden from guests"}: ${need.map(esc).join(", ")}` : "",
+      need.length ? `${st === "out" ? "Hidden from guests" : "Needed for"}: ${need.map(esc).join(", ")}` : "",
       garnish.length ? `Garnish on: ${garnish.map(esc).join(", ")}` : "",
     ].filter(Boolean).join("<br>") || "Not in any drink yet";
-    return `<button class="ing ${i.in_stock ? "" : "out"}" data-ing="${esc(i.key)}">
-      <span class="t"><span class="n">${esc(i.name)}</span><br><span class="d">${hint}</span></span>
-      <span class="st">${i.in_stock ? "Got it" : "Out"}</span>
-    </button>`;
+    const top = TOP_SHELF_GROUPS.includes(i.grp)
+      ? `<label class="topshelf">⭐ Top shelf bottle <input data-top="${esc(i.key)}" value="${esc(i.top_shelf || "")}" maxlength="60" placeholder="e.g. Macallan 12 (leave blank if none)"></label>` : "";
+    return `<div class="ing ${st}" data-ing="${esc(i.key)}">
+      <div class="t"><span class="n">${esc(i.name)}</span><br><span class="d">${hint}</span></div>
+      <div class="seg3" role="group" aria-label="${esc(i.name)} stock">
+        <button data-st="in" class="${st === "in" ? "on" : ""}">Got it</button>
+        <button data-st="low" class="${st === "low" ? "on" : ""}">Running low</button>
+        <button data-st="out" class="${st === "out" ? "on" : ""}">Out</button>
+      </div>
+      ${top}
+    </div>`;
   }).join("")).join("");
   $("ingGrp").innerHTML = GROUPS.map((g) => `<option>${esc(g)}</option>`).join("");
 }
 $("stockList").onclick = async (e) => {
-  const b = e.target.closest("[data-ing]"); if (!b) return;
-  const ing = ingredients.find((i) => i.key === b.dataset.ing);
-  const next = !ing.in_stock;
-  const { error } = await sb.from("ingredients").update({ in_stock: next }).eq("key", ing.key);
+  const b = e.target.closest("[data-st]"); if (!b) return;
+  const ing = ingredients.find((i) => i.key === b.closest("[data-ing]").dataset.ing);
+  const was = stateOf(ing), next = b.dataset.st;
+  if (was === next) return;
+  const patch = { in_stock: next !== "out", low: next === "low" };
+  const { error } = await sb.from("ingredients").update(patch).eq("key", ing.key);
   if (error) return toast("Couldn't save that.");
-  ing.in_stock = next;
-  const n = usedBy(ing.key).length;
-  toast(next ? `${ing.name} is back${n ? `. ${n} drink${n > 1 ? "s" : ""} back on` : ""}` : `Out of ${ing.name}${n ? `. ${n} drink${n > 1 ? "s" : ""} switched off` : ""}`);
+  Object.assign(ing, patch);
+  const n = usedBy(ing.key).length, drinks = `${n} drink${n > 1 ? "s" : ""}`;
+  toast(next === "out" ? `Out of ${ing.name}${n ? `. ${drinks} switched off` : ""}`
+    : next === "low" ? `${ing.name} is running low. Guests can still order.`
+    : `${ing.name} is stocked${was === "out" && n ? `. ${drinks} back on` : ""}`);
   renderStock(); renderMenu();
 };
+$("stockList").addEventListener("change", async (e) => {
+  const k = e.target.dataset.top; if (!k) return;
+  const v = e.target.value.trim() || null;
+  const { error } = await sb.from("ingredients").update({ top_shelf: v }).eq("key", k);
+  if (error) return toast("Couldn't save that.");
+  ingredients.find((i) => i.key === k).top_shelf = v;
+  toast(v ? `Guests can now ask for ${v}` : "Top shelf option removed");
+});
 $("ingForm").onsubmit = async (e) => {
   e.preventDefault();
   const name = $("ingName").value.trim();

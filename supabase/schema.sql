@@ -447,3 +447,48 @@ begin
     insert into public.seed_log (key) values ('wine-by-glass-v1');
   end if;
 end $$;
+
+-- Richer stock (Jas, 2026-11-24): "running low" (still orderable, a heads-up for Gizmo)
+-- and an optional top-shelf bottle per ingredient that guests can ask for.
+alter table public.ingredients add column if not exists low boolean not null default false;
+alter table public.ingredients add column if not exists top_shelf text check (top_shelf is null or char_length(top_shelf) <= 60);
+alter table public.orders add column if not exists top_shelf text;
+
+create or replace function public.place_order(p_name text, p_item uuid, p_notes text, p_top boolean)
+returns public.orders
+language plpgsql security definer set search_path = public as $$
+declare
+  item public.menu_items;
+  o public.orders;
+  bottle text;
+begin
+  if not public.bar_is_open() then raise exception 'BAR_CLOSED'; end if;
+  select * into item from public.menu_items where id = p_item for update;
+  if not found then raise exception 'NO_SUCH_DRINK'; end if;
+  if not item.available or item.stock = 0 then raise exception 'SOLD_OUT'; end if;
+  if exists (select 1 from public.ingredients where key = any(item.needs) and not in_stock) then
+    raise exception 'SOLD_OUT';
+  end if;
+  if p_top then
+    select string_agg(i.top_shelf, ', ' order by i.sort) into bottle
+      from public.ingredients i where i.key = any(item.needs) and nullif(trim(i.top_shelf), '') is not null;
+  end if;
+  if item.stock is not null then
+    update public.menu_items set stock = stock - 1, available = (stock - 1) > 0 where id = item.id;
+  end if;
+  insert into public.orders (guest_name, item_id, item_name, notes, top_shelf)
+    values (left(trim(p_name), 40), item.id, item.name, left(coalesce(trim(p_notes), ''), 200), bottle)
+    returning * into o;
+  return o;
+end $$;
+revoke execute on function public.place_order(text, uuid, text, boolean) from public, anon, authenticated;
+grant execute on function public.place_order(text, uuid, text, boolean) to service_role;
+
+-- Keep the 3-argument version working (older function deploys, smoke tests).
+create or replace function public.place_order(p_name text, p_item uuid, p_notes text)
+returns public.orders
+language sql security definer set search_path = public as $$
+  select public.place_order(p_name, p_item, p_notes, false)
+$$;
+revoke execute on function public.place_order(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.place_order(text, uuid, text) to service_role;
