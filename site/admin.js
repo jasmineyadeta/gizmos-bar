@@ -59,7 +59,8 @@ $("signOut").onclick = async () => {
 // ---------- App ----------
 async function startApp() {
   await loadIngredients();
-  await Promise.all([loadSettings(), loadMenu(), loadOrders()]);
+  await Promise.all([loadSettings(), loadMenu()]);
+  await loadOrders();
   renderStock();
   hideLoader();
   $("appView").classList.remove("hidden");
@@ -83,20 +84,36 @@ async function loadOrders() {
   const fresh = data.filter((o) => o.status === "new");
   $("badge").textContent = fresh.length;
   $("badge").classList.toggle("hidden", !fresh.length);
+  const tz = settings?.timezone;
+  const clock = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", ...(tz ? { timeZone: tz } : {}) });
   const ago = (t) => {
     const m = Math.round((Date.now() - new Date(t)) / 60000);
-    return m < 1 ? "just now" : m < 60 ? `${m} min ago` : new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (m < 1) return "just now";
+    if (m < 60) return `${m} min ago`;
+    const h = Math.floor(m / 60);
+    return h < 24 ? `${h} hr ${m % 60 ? `${m % 60} min ` : ""}ago` : new Date(t).toLocaleDateString([], { month: "short", day: "numeric", ...(tz ? { timeZone: tz } : {}) });
+  };
+  const open = new Set([...document.querySelectorAll("#orders details[open]")].map((d) => d.dataset.order));
+  const howTo = (o) => {
+    const d = menu.find((x) => x.id === o.item_id);
+    const rows = d?.recipe?.length ? d.recipe.map(rowText) : (d?.description || "").split(" · ").filter(Boolean);
+    if (!rows.length) return "";
+    return `<details class="howto" data-order="${o.id}" ${open.has(o.id) ? "open" : ""}><summary>How to make it</summary>
+      <ul class="recipe">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul></details>`;
   };
   const list = [...fresh.reverse(), ...data.filter((o) => o.status === "done")];
   $("orders").innerHTML = list.map((o) => `
     <div class="card order ${o.status}">
-      <div class="t">
-        <div class="who">${esc(o.guest_name)}</div>
-        <div class="what">${esc(o.item_name)}</div>
-        ${o.notes ? `<div class="note">"${esc(o.notes)}"</div>` : ""}
-        <div class="time">${ago(o.created_at)}</div>
+      <div class="row" style="flex-wrap:nowrap;align-items:flex-start">
+        <div class="t">
+          <div class="who">${esc(o.guest_name)}</div>
+          <div class="what">${esc(o.item_name)}</div>
+          ${o.notes ? `<div class="note">"${esc(o.notes)}"</div>` : ""}
+          <div class="time">Ordered ${clock(o.created_at)} · ${ago(o.created_at)}</div>
+        </div>
+        ${o.status === "new" ? `<button class="btn" data-done="${o.id}">Served</button>` : `<span class="small muted">Served</span>`}
       </div>
-      ${o.status === "new" ? `<button class="btn" data-done="${o.id}">Served</button>` : `<span class="small muted">Served</span>`}
+      ${o.status === "new" ? howTo(o) : ""}
     </div>`).join("") || `<div class="card notice"><p>No orders yet. Thirsty crowd incoming.</p></div>`;
   if (settings) setOwnerStatus();
 }

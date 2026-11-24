@@ -202,3 +202,9 @@ a { color: var(--accent); }
 .chip { background: transparent; }
 .chip.on { background: var(--accent); }
 .tabs button.on { box-shadow: inset 0 -2px 0 rgba(0,0,0,.15); }
+.order { display: block; }
+.order .time { font-size: 13px; margin-top: 2px; }
+.howto { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.howto summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 15px; padding: 4px 0; }
+.howto .recipe { margin-top: 6px; font-size: 15px; columns: 1; }
+.howto .recipe li { padding: 4px 0 4px 14px; }
