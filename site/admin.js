@@ -424,7 +424,22 @@ function renderHours() {
   if (!zones.includes(settings.timezone)) zones.unshift(settings.timezone);
   $("tzIn").innerHTML = zones.map((z) => `<option ${z === settings.timezone ? "selected" : ""}>${z}</option>`).join("");
   setOwnerStatus();
+  $("showBoard").checked = settings.show_board !== false;
 }
+$("showBoard").onchange = async () => {
+  const v = $("showBoard").checked;
+  const { error } = await sb.from("settings").update({ show_board: v }).eq("id", 1);
+  if (error) return toast("Couldn't save.");
+  settings.show_board = v;
+  toast(v ? "Leaderboard is showing" : "Leaderboard hidden from guests");
+};
+$("resetBoard").onclick = async () => {
+  const b = $("resetBoard");
+  if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Tap again to wipe all counts"; return; }
+  const { error } = await sb.rpc("reset_leaderboard");
+  b.dataset.confirm = ""; b.textContent = "Reset leaderboard";
+  toast(error ? "Couldn't reset." : "Leaderboard wiped. Fresh start!");
+};
 $("mode").onclick = async (e) => {
   const b = e.target.closest("button");
   if (!b) return;

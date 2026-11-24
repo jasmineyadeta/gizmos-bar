@@ -43,7 +43,32 @@ function render() {
   $("closedMsg").textContent = settings.closed_message;
 
   renderBrowse(open);
+  $("board").classList.toggle("hidden", settings.show_board === false);
+  $("boardLink").classList.toggle("hidden", settings.show_board === false);
+  if (settings.show_board !== false) loadBoard();
 }
+
+// ---------- Crew leaderboard ----------
+const RANKS = ["🧑‍✈️ Captain", "⚓ First Mate", "🪢 Bosun"];
+let boardScope = "tonight";
+async function loadBoard() {
+  const { data, error } = await sb.rpc("leaderboard", { p_scope: boardScope });
+  if (error) return;
+  const me = nameInput.value.trim().toLowerCase().replace(/\s+/g, " ");
+  $("boardList").innerHTML = (data || []).map((r, i) => `
+    <li class="${r.name.toLowerCase().replace(/\s+/g, " ") === me ? "me" : ""}">
+      <span class="rk">${i + 1}</span>
+      <span class="who"><b>${esc(r.name)}</b><small>${RANKS[i] || "Deckhand"}</small></span>
+      <span class="n">${r.drinks} <small>drink${r.drinks == 1 ? "" : "s"}</small></span>
+    </li>`).join("") ||
+    `<li class="empty-board">${boardScope === "tonight" ? "No drinks yet tonight. First order makes you Captain!" : "No drinks yet. Be the first!"}</li>`;
+}
+$("boardTabs").onclick = (e) => {
+  const b = e.target.closest("[data-b]"); if (!b) return;
+  boardScope = b.dataset.b;
+  document.querySelectorAll("#boardTabs button").forEach((x) => x.classList.toggle("on", x === b));
+  loadBoard();
+};
 
 const MOODS = [
   { key: "fizzy", label: "🫧 Fizzy", tags: ["fizzy"] },
@@ -189,6 +214,7 @@ function showPlaced(name, drink, id) {
   $("placed").classList.remove("hidden");
   $("nameCard").classList.add("hidden");
   $("browse").classList.add("hidden");
+  if (settings.show_board !== false) loadBoard();
   window.scrollTo({ top: 0, behavior: "smooth" });
   clearInterval(pollTimer);
   pollTimer = setInterval(async () => {

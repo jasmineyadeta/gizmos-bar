@@ -21,6 +21,7 @@
       <div>
         <h1 id="barName">Gizmo's Bar</h1>
         <p><span id="status" class="pill">Checking...</span> <span id="hours" class="small muted"></span></p>
+        <a href="#board" class="board-link hidden" id="boardLink">🏆 Crew leaderboard</a>
       </div>
     </header>
     <div class="rope" aria-hidden="true"></div>
@@ -52,6 +53,13 @@
         <button class="btn btn-small" id="surprise">🎲 Surprise me</button>
       </div>
       <div id="menu" class="grid"></div>
+    </section>
+
+    <section id="board" class="card board hidden">
+      <h2>🏆 Crew leaderboard</h2>
+      <p class="small muted" style="margin:0 0 12px">Who's had the most drinks. Gizmo keeps count.</p>
+      <div class="seg" id="boardTabs"><button data-b="tonight" class="on">Tonight</button><button data-b="all">All time</button></div>
+      <ol id="boardList"></ol>
     </section>
   </main>
 

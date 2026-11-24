@@ -492,3 +492,64 @@ language sql security definer set search_path = public as $$
 $$;
 revoke execute on function public.place_order(text, uuid, text) from public, anon, authenticated;
 grant execute on function public.place_order(text, uuid, text) to service_role;
+
+-- Crew leaderboard (Jas, 2026-11-24). One row per drink ordered, kept apart from orders so
+-- "Clear finished" doesn't wipe the board. Names are merged ignoring case and spaces.
+create table if not exists public.tallies (
+  id bigint generated always as identity primary key,
+  name_key text not null,
+  display text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists tallies_created_idx on public.tallies (created_at);
+alter table public.tallies enable row level security;
+alter table public.settings add column if not exists show_board boolean not null default true;
+
+create or replace function public.name_key(n text) returns text
+language sql immutable as $$ select lower(regexp_replace(trim(coalesce(n, '')), '\s+', ' ', 'g')) $$;
+
+create or replace function public.add_tally() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.tallies (name_key, display, created_at)
+    values (public.name_key(new.guest_name), trim(new.guest_name), new.created_at);
+  return new;
+end $$;
+drop trigger if exists orders_tally on public.orders;
+create trigger orders_tally after insert on public.orders for each row execute function public.add_tally();
+
+do $$
+begin
+  if not exists (select 1 from public.seed_log where key = 'tallies-backfill-v1') then
+    insert into public.tallies (name_key, display, created_at)
+      select public.name_key(guest_name), trim(guest_name), created_at from public.orders;
+    insert into public.seed_log (key) values ('tallies-backfill-v1');
+  end if;
+end $$;
+
+-- "Tonight" runs from 6 AM to 6 AM in the bar's time zone, so a late night counts as one night.
+create or replace function public.leaderboard(p_scope text)
+returns table (name text, drinks bigint)
+language sql stable security definer set search_path = public as $$
+  with b as (
+    select case when p_scope = 'tonight'
+      then (date_trunc('day', (now() at time zone s.timezone) - interval '6 hours') + interval '6 hours') at time zone s.timezone
+      else '-infinity'::timestamptz end as since
+    from public.settings s where s.id = 1 and s.show_board
+  )
+  select (array_agg(t.display order by t.created_at desc))[1], count(*)
+    from public.tallies t, b
+   where t.created_at >= b.since
+   group by t.name_key
+   order by count(*) desc, max(t.created_at) asc
+   limit 10
+$$;
+grant execute on function public.leaderboard(text) to anon, authenticated;
+
+create or replace function public.reset_leaderboard() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  delete from public.tallies;
+end $$;
+grant execute on function public.reset_leaderboard() to anon, authenticated;
