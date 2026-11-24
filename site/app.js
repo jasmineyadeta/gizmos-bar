@@ -7,7 +7,7 @@ let picked = null;
 
 $("heroGizmo").innerHTML = GIZMO_SVG;
 $("placedGizmo").innerHTML = GIZMO_SVG;
-$("placedGizmo").querySelector("svg").style.cssText = "width:150px;height:162px";
+$("placedGizmo").querySelector("svg").style.cssText = "width:150px;height:171px";
 
 const nameInput = $("name");
 try { nameInput.value = localStorage.getItem("guestName") || ""; } catch {}

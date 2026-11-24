@@ -1,6 +1,6 @@
 // Cartoon Gizmo shaking a cocktail shaker. Pure SVG + CSS animation.
 export const GIZMO_SVG = `
-<svg class="gizmo" viewBox="0 0 240 260" role="img" aria-label="Gizmo shaking a cocktail">
+<svg class="gizmo" viewBox="0 0 280 320" role="img" aria-label="Gizmo shaking a cocktail">
   <defs>
     <linearGradient id="gz-steel" x1="0" x2="1">
       <stop offset="0" stop-color="#8d949c"/><stop offset=".35" stop-color="#f4f6f8"/>
@@ -15,12 +15,12 @@ export const GIZMO_SVG = `
   </defs>
 
   <!-- shirt, suspenders, bow tie -->
-  <path d="M28 260 C34 214 64 196 120 194 C176 196 206 214 212 260 Z" fill="#a9afb6"/>
-  <path d="M100 196 L120 222 L140 196 Z" fill="#c5cacf"/>
-  <path d="M74 202 L84 260 L98 260 L88 199 Z" fill="#1c1c1f"/>
-  <path d="M166 202 L156 260 L142 260 L152 199 Z" fill="#1c1c1f"/>
-  <rect x="108" y="176" width="24" height="24" rx="6" fill="#e9b08c"/>
-  <g class="gz-tie">
+  <path d="M40 320 C42 250 66 214 120 210 C174 214 198 250 200 320 Z" fill="#a9afb6"/>
+  <path d="M102 212 L120 236 L138 212 Z" fill="#c5cacf"/>
+  <path d="M74 220 L86 320 L100 320 L90 216 Z" fill="#1c1c1f"/>
+  <path d="M166 220 L154 320 L140 320 L150 216 Z" fill="#1c1c1f"/>
+  <rect x="108" y="184" width="24" height="30" rx="6" fill="#e9b08c"/>
+  <g transform="translate(0 12)">
     <path d="M120 206 L98 194 Q94 206 98 218 Z" fill="#141416"/>
     <path d="M120 206 L142 194 Q146 206 142 218 Z" fill="#141416"/>
     <rect x="114" y="200" width="12" height="12" rx="3" fill="#000"/>
@@ -59,28 +59,28 @@ export const GIZMO_SVG = `
     <path d="M101 157 Q120 163 139 157 L137 162 Q120 167 103 162 Z" fill="#fff"/>
   </g>
 
-  <!-- arm + shaker: raised from his left shoulder, shaker held sideways -->
+  <!-- both hands on the shaker, tilted up by his shoulder -->
   <g class="gz-arm">
-    <path d="M160 214 Q188 206 212 182" stroke="#a9afb6" stroke-width="26" fill="none" stroke-linecap="round"/>
-    <path d="M212 182 Q224 136 201 92" stroke="#a9afb6" stroke-width="21" fill="none" stroke-linecap="round"/>
-    <path d="M220 132 L206 126" stroke="#959ba2" stroke-width="2" stroke-linecap="round"/>
+    <path d="M72 236 C82 272 134 270 184 214" stroke="#8a9097" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M72 236 C82 272 134 270 184 214" stroke="#a9afb6" stroke-width="22" fill="none" stroke-linecap="round"/>
+    <path d="M172 234 Q236 244 226 176" stroke="#8a9097" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M172 234 Q236 244 226 176" stroke="#a9afb6" stroke-width="22" fill="none" stroke-linecap="round"/>
     <g class="gz-shaker">
-      <g transform="translate(3 -32) rotate(-14 200 104)">
-        <path d="M172 92 L210 88 L210 120 L172 116 Z" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
-        <path d="M210 88 L222 92 L222 116 L210 120 Z" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
-        <rect x="222" y="98" width="9" height="12" rx="3" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
-        <path d="M176 96 L206 93" stroke="#fff" stroke-width="3" opacity=".65" stroke-linecap="round"/>
+      <g transform="translate(206 190) rotate(-38)">
+        <path d="M-36 -12 L10 -16 L10 16 L-36 12 Z" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
+        <path d="M10 -16 L24 -11 L24 11 L10 16 Z" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
+        <rect x="24" y="-6" width="9" height="12" rx="3" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
+        <path d="M-32 -8 L6 -11" stroke="#fff" stroke-width="3" opacity=".65" stroke-linecap="round"/>
       </g>
+      <circle cx="186" cy="210" r="11" fill="#eab48f" stroke="#cf8f6b" stroke-width="1.5"/>
+      <circle cx="226" cy="172" r="11" fill="#eab48f" stroke="#cf8f6b" stroke-width="1.5"/>
     </g>
-    <ellipse cx="199" cy="80" rx="13" ry="11" fill="#eab48f"/>
-    <path d="M189 74 Q199 69 209 73 M190 80 Q199 76 208 79" stroke="#cf8f6b" stroke-width="1.4" fill="none"/>
   </g>
 
   <!-- shake lines -->
   <g class="gz-lines" stroke="#f5b041" stroke-width="3" stroke-linecap="round" fill="none">
-    <path d="M234 40 Q240 52 236 64"/>
-    <path d="M232 92 Q238 102 234 114"/>
-    <path d="M184 46 Q178 36 182 26"/>
+    <path d="M256 140 Q266 156 260 174"/>
+    <path d="M178 152 Q170 168 176 186"/>
   </g>
 </svg>`;
 
