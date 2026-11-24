@@ -58,7 +58,9 @@ $("signOut").onclick = async () => {
 
 // ---------- App ----------
 async function startApp() {
+  await loadIngredients();
   await Promise.all([loadSettings(), loadMenu(), loadOrders()]);
+  renderStock();
   hideLoader();
   $("appView").classList.remove("hidden");
   refreshPushState();
@@ -116,18 +118,104 @@ function setOwnerStatus() {
   $("ownerStatus").className = `pill ${open ? "open" : "closed"}`;
 }
 
+// ---------- Stock (ingredients) ----------
+const GROUPS = ["Spirits", "Liqueurs & wine", "Mixers & juice", "Fruit & garnish", "Pantry"];
+let ingredients = [];
+const ingName = (k) => ingredients.find((i) => i.key === k)?.name || k;
+const usedBy = (k) => menu.filter((d) => (d.needs || []).includes(k));
+const grouped = () => {
+  const gs = [...GROUPS, ...new Set(ingredients.map((i) => i.grp).filter((g) => !GROUPS.includes(g)))];
+  return gs.map((g) => [g, ingredients.filter((i) => i.grp === g)]).filter(([, l]) => l.length);
+};
+
+async function loadIngredients() {
+  const { data } = await sb.from("ingredients").select("*").order("sort").order("name");
+  ingredients = data || [];
+}
+function renderStock() {
+  const outCount = ingredients.filter((i) => !i.in_stock).length;
+  $("stockBadge").textContent = outCount;
+  $("stockBadge").classList.toggle("hidden", !outCount);
+  $("stockList").innerHTML = grouped().map(([g, list]) => `<h3 class="grp-h">${esc(g)}</h3>` + list.map((i) => {
+    const n = usedBy(i.key).length;
+    const hint = n ? (i.in_stock ? `Used in ${n} drink${n > 1 ? "s" : ""}` : `${n} drink${n > 1 ? "s" : ""} hidden from guests`) : "Not used in any drink yet";
+    return `<button class="ing ${i.in_stock ? "" : "out"}" data-ing="${esc(i.key)}">
+      <span class="t"><span class="n">${esc(i.name)}</span><br><span class="d">${hint}</span></span>
+      <span class="st">${i.in_stock ? "Got it" : "Out"}</span>
+    </button>`;
+  }).join("")).join("");
+  $("ingGrp").innerHTML = GROUPS.map((g) => `<option>${esc(g)}</option>`).join("");
+}
+$("stockList").onclick = async (e) => {
+  const b = e.target.closest("[data-ing]"); if (!b) return;
+  const ing = ingredients.find((i) => i.key === b.dataset.ing);
+  const next = !ing.in_stock;
+  const { error } = await sb.from("ingredients").update({ in_stock: next }).eq("key", ing.key);
+  if (error) return toast("Couldn't save that.");
+  ing.in_stock = next;
+  const n = usedBy(ing.key).length;
+  toast(next ? `${ing.name} is back${n ? `. ${n} drink${n > 1 ? "s" : ""} back on` : ""}` : `Out of ${ing.name}${n ? `. ${n} drink${n > 1 ? "s" : ""} switched off` : ""}`);
+  renderStock(); renderMenu();
+};
+$("ingForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const name = $("ingName").value.trim();
+  const key = name.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `ing_${Date.now()}`;
+  if (ingredients.some((i) => i.key === key)) return toast("That one's already on the list.");
+  const { error } = await sb.from("ingredients").insert({ key, name, grp: $("ingGrp").value, sort: ingredients.length + 1 });
+  if (error) return toast("Couldn't add that.");
+  $("ingName").value = "";
+  toast(`${name} added`);
+  await loadIngredients(); renderStock(); renderMenu();
+};
+
 // ---------- Menu ----------
+const TAGS = [["fizzy", "🫧 Fizzy"], ["citrusy", "🍋 Citrusy"], ["strong", "🥃 Strong"], ["fruity", "🍓 Fruity"],
+  ["sweet", "🍬 Sweet"], ["warming", "🔥 Warming"], ["savory", "🌶️ Savory"]];
+const PLACEHOLDER = "drinks/placeholder.svg";
+const tagChips = (tags, attr) => TAGS.map(([k, l]) =>
+  `<button type="button" class="chip ${(tags || []).includes(k) ? "on" : ""}" ${attr}="${k}">${l}</button>`).join("");
+const needChips = (needs, attr) => grouped().map(([g, list]) => `<h4 class="grp-h">${esc(g)}</h4><div class="chips small">` +
+  list.map((i) => `<button type="button" class="chip ${(needs || []).includes(i.key) ? "on" : ""}" ${attr}="${esc(i.key)}">${esc(i.name)}</button>`).join("") +
+  `</div>`).join("");
+const needsNote = (d) => {
+  const ns = d.needs || [];
+  if (!ns.length) return "Nothing picked, so it never switches off on its own.";
+  return ns.map((k) => ingredients.find((i) => i.key === k && !i.in_stock) ? `<b>${esc(ingName(k))} (out)</b>` : esc(ingName(k))).join(", ");
+};
+
+// Shrink a photo on the phone to a small square JPEG so it loads fast for guests.
+async function photoToDataUrl(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const c = document.createElement("canvas"); c.width = c.height = 480;
+    c.getContext("2d").drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 480, 480);
+    return c.toDataURL("image/jpeg", 0.75);
+  } finally { URL.revokeObjectURL(url); }
+}
+
 async function loadMenu() {
   const { data } = await sb.from("menu_items").select("*").order("sort").order("name");
   menu = data || [];
+  renderMenu();
+}
+function renderMenu() {
   $("cats").innerHTML = [...new Set(menu.map((d) => d.category))].map((c) => `<option value="${esc(c)}">`).join("");
+  if (!$("mTags").children.length) $("mTags").innerHTML = tagChips(newTags, "data-ntag");
+  $("mNeeds").innerHTML = needChips(newNeeds, "data-nneed");
+  const open = new Set([...document.querySelectorAll("#menuList details[open]")].map((x) => x.closest("[data-id]").dataset.id));
   $("menuList").innerHTML = menu.map((d) => `
     <div class="card stack" data-id="${d.id}">
-      <div class="row">
+      <div class="row" style="flex-wrap:nowrap">
+        <label class="edit-img" title="Change photo"><img src="${esc(d.image || PLACEHOLDER)}" alt=""><span>${d.image ? "Change" : "Add photo"}</span><input type="file" accept="image/*" data-img hidden></label>
         <input class="grow" data-f="name" value="${esc(d.name)}" maxlength="80" aria-label="Drink name">
         <label class="switch" title="Available"><input type="checkbox" data-f="available" ${d.available ? "checked" : ""}><span></span></label>
       </div>
-      <input data-f="description" value="${esc(d.description)}" maxlength="300" placeholder="Description" aria-label="Description">
+      <input data-f="description" value="${esc(d.description)}" maxlength="500" placeholder="Description" aria-label="Description">
+      <div class="chips small">${tagChips(d.tags, "data-tag")}</div>
+      <details class="needs" ${open.has(d.id) ? "open" : ""}><summary>Needs: <span class="needs-note">${needsNote(d)}</span></summary>${needChips(d.needs, "data-need")}</details>
       <div class="row">
         <input class="grow" data-f="category" value="${esc(d.category)}" list="cats" maxlength="40" aria-label="Section">
         <input style="width:90px" data-f="stock" type="number" min="0" inputmode="numeric" value="${d.stock ?? ""}" placeholder="No limit" aria-label="How many left">
@@ -136,38 +224,70 @@ async function loadMenu() {
     </div>`).join("");
 }
 
+async function saveItem(id, patch, msg = "Saved") {
+  const { error } = await sb.from("menu_items").update(patch).eq("id", id);
+  if (error) { toast("Couldn't save that."); return false; }
+  Object.assign(menu.find((d) => d.id === id), patch);
+  toast(msg);
+  return true;
+}
+const toggle = (arr, k) => (arr || []).includes(k) ? arr.filter((x) => x !== k) : [...(arr || []), k];
+
 $("menuList").addEventListener("change", async (e) => {
   const card = e.target.closest("[data-id]");
+  if (!card) return;
+  if (e.target.hasAttribute("data-img")) {
+    const file = e.target.files[0]; if (!file) return;
+    showLoader("Saving photo...");
+    try { if (await saveItem(card.dataset.id, { image: await photoToDataUrl(file) }, "Photo saved")) renderMenu(); }
+    catch { toast("Couldn't read that photo."); }
+    hideLoader();
+    return;
+  }
   const f = e.target.dataset.f;
-  if (!card || !f) return;
+  if (!f) return;
   let v = e.target.type === "checkbox" ? e.target.checked : e.target.value.trim();
   if (f === "stock") v = v === "" ? null : Math.max(0, parseInt(v, 10) || 0);
   if (f === "name" && !v) return toast("A drink needs a name.");
   const patch = { [f]: v };
   if (f === "stock" && v > 0) patch.available = true;
-  const { error } = await sb.from("menu_items").update(patch).eq("id", card.dataset.id);
-  if (error) return toast("Couldn't save that.");
-  toast("Saved");
-  if (f === "stock" || f === "category") loadMenu();
+  if (await saveItem(card.dataset.id, patch) && (f === "stock" || f === "category")) renderMenu();
 });
 $("menuList").addEventListener("click", async (e) => {
-  if (!e.target.hasAttribute("data-del")) return;
   const card = e.target.closest("[data-id]");
+  if (!card) return;
+  const d = menu.find((x) => x.id === card.dataset.id);
+  const t = e.target.closest("[data-tag],[data-need]");
+  if (t) {
+    const patch = t.dataset.tag ? { tags: toggle(d.tags, t.dataset.tag) } : { needs: toggle(d.needs, t.dataset.need) };
+    if (await saveItem(d.id, patch)) { renderMenu(); renderStock(); }
+    return;
+  }
+  if (!e.target.hasAttribute("data-del")) return;
   if (e.target.dataset.confirm !== "1") { e.target.dataset.confirm = "1"; e.target.textContent = "Tap to confirm"; return; }
-  await sb.from("menu_items").delete().eq("id", card.dataset.id);
-  loadMenu();
+  await sb.from("menu_items").delete().eq("id", d.id);
+  await loadMenu(); renderStock();
 });
+
+let newTags = [], newNeeds = [], newImage = null;
+$("mTags").onclick = (e) => { const b = e.target.closest("[data-ntag]"); if (!b) return; newTags = toggle(newTags, b.dataset.ntag); b.classList.toggle("on"); };
+$("mNeeds").onclick = (e) => { const b = e.target.closest("[data-nneed]"); if (!b) return; newNeeds = toggle(newNeeds, b.dataset.nneed); b.classList.toggle("on"); };
+$("mImg").onchange = async () => {
+  const file = $("mImg").files[0]; if (!file) return;
+  try { newImage = await photoToDataUrl(file); $("mImgPrev").src = newImage; } catch { toast("Couldn't read that photo."); }
+};
 $("addForm").onsubmit = async (e) => {
   e.preventDefault();
   const stock = $("mStock").value === "" ? null : parseInt($("mStock").value, 10);
   const { error } = await sb.from("menu_items").insert({
     name: $("mName").value.trim(), description: $("mDesc").value.trim(), category: $("mCat").value.trim() || "Cocktails",
-    stock, available: stock !== 0, sort: menu.length + 1,
+    stock, available: stock !== 0, sort: menu.length + 1, image: newImage, tags: newTags, needs: newNeeds,
   });
   if (error) return toast("Couldn't add that drink.");
-  $("mName").value = ""; $("mDesc").value = ""; $("mStock").value = "";
+  $("mName").value = ""; $("mDesc").value = ""; $("mStock").value = ""; $("mImg").value = "";
+  newTags = []; newNeeds = []; newImage = null; $("mImgPrev").src = PLACEHOLDER; $("mTags").innerHTML = "";
   toast("Added to the menu");
-  loadMenu();
+  await loadMenu(); renderStock();
 };
 
 // ---------- Hours ----------

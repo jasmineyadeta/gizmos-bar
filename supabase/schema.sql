@@ -275,3 +275,91 @@ begin
     insert into public.seed_log (key) values ('gizmo-menu-v1');
   end if;
 end $$;
+
+-- Ingredient stock ------------------------------------------------------------
+-- Gizmo marks an ingredient out, and every drink that needs it stops being orderable.
+-- Ingredient list and which drink needs what were worked out by Claude from his recipes
+-- (garnishes and optional extras don't count as "needs").
+create table if not exists public.ingredients (
+  key text primary key,
+  name text not null,
+  grp text not null,
+  in_stock boolean not null default true,
+  sort int not null default 0
+);
+alter table public.ingredients enable row level security;
+drop policy if exists "ingredients read" on public.ingredients;
+create policy "ingredients read" on public.ingredients for select using (true);
+drop policy if exists "ingredients write" on public.ingredients;
+create policy "ingredients write" on public.ingredients for all using (public.is_owner()) with check (public.is_owner());
+grant select on public.ingredients to anon, authenticated;
+grant insert, update, delete on public.ingredients to anon, authenticated;
+
+alter table public.menu_items add column if not exists needs text[] not null default '{}';
+alter table public.menu_items drop constraint if exists menu_items_description_check;
+alter table public.menu_items add constraint menu_items_description_check check (char_length(description) <= 500);
+alter table public.menu_items drop constraint if exists menu_items_image_size;
+alter table public.menu_items add constraint menu_items_image_size check (image is null or char_length(image) <= 400000);
+
+insert into public.ingredients (key, name, grp, sort) values
+  ('gin','Gin','Spirits',1), ('vodka','Vodka','Spirits',2), ('tequila','Tequila','Spirits',3),
+  ('light_rum','Light / white rum','Spirits',4), ('dark_rum','Dark rum','Spirits',5), ('navy_rum','Navy-strength rum','Spirits',6),
+  ('whiskey','Bourbon / rye whiskey','Spirits',7), ('scotch','Scotch','Spirits',8), ('brandy','Brandy','Spirits',9),
+  ('dry_vermouth','Dry vermouth','Liqueurs & wine',10), ('sweet_vermouth','Sweet vermouth','Liqueurs & wine',11),
+  ('campari','Campari','Liqueurs & wine',12), ('triple_sec','Triple sec','Liqueurs & wine',13),
+  ('cassis','Crème de cassis','Liqueurs & wine',14), ('sparkling','Sparkling wine','Liqueurs & wine',15),
+  ('port','Port','Liqueurs & wine',16), ('ginger_wine','Green ginger wine','Liqueurs & wine',17),
+  ('mixers','Mixers (tonic, cola...)','Mixers & juice',18), ('soda','Club soda','Mixers & juice',19),
+  ('ginger_beer','Ginger beer','Mixers & juice',20), ('orange_juice','Orange juice','Mixers & juice',21),
+  ('cranberry','Cranberry juice','Mixers & juice',22), ('clamato','Clamato','Mixers & juice',23),
+  ('passion_pineapple','Passion fruit or pineapple juice','Mixers & juice',24),
+  ('lemons','Lemons / lemon juice','Fruit & garnish',25), ('limes','Limes / lime juice','Fruit & garnish',26),
+  ('mint','Fresh mint','Fruit & garnish',27), ('cherries','Maraschino cherries','Fruit & garnish',28),
+  ('sugar','Sugar / simple syrup','Pantry',29), ('bitters','Angostura bitters','Pantry',30), ('grenadine','Grenadine','Pantry',31)
+on conflict (key) do nothing;
+
+do $$
+begin
+  if not exists (select 1 from public.seed_log where key = 'gizmo-needs-v1') then
+    update public.menu_items m set needs = v.needs from (values
+      ('Gin & Tonic / Bacardi & Coke etc.', '{mixers}'::text[]),
+      ('Dry Martini', '{gin,dry_vermouth}'), ('Tom Collins', '{gin,lemons,sugar,soda}'),
+      ('Martinez', '{gin,sweet_vermouth,bitters,cherries}'), ('Negroni', '{gin,campari,sweet_vermouth}'),
+      ('French 75', '{gin,lemons,sugar,sparkling}'), ('Kir Royale', '{cassis,sparkling}'),
+      ('Cosmopolitan', '{vodka,triple_sec,limes,cranberry}'), ('Moscow Mule', '{vodka,limes,ginger_beer}'),
+      ('Caesar', '{vodka,clamato}'), ('Screwdriver', '{vodka,orange_juice}'),
+      ('Tequila Sunrise', '{tequila,orange_juice,grenadine}'), ('Margarita', '{tequila,triple_sec,limes}'),
+      ('Mojito', '{light_rum,mint,sugar,limes,soda}'),
+      ('Hurricane', '{light_rum,dark_rum,navy_rum,sugar,passion_pineapple,orange_juice,limes,grenadine}'),
+      ('Daiquiri', '{light_rum,limes,sugar}'), ('Manhattan', '{whiskey,sweet_vermouth,bitters}'),
+      ('Old Fashioned', '{whiskey,sugar,bitters}'), ('Whisky Mac', '{scotch,ginger_wine}'),
+      ('Brandy Sangaree', '{brandy,port,sugar}')
+    ) as v(name, needs) where m.name = v.name;
+    insert into public.seed_log (key) values ('gizmo-needs-v1');
+  end if;
+end $$;
+
+-- place_order now also refuses drinks with a missing ingredient.
+create or replace function public.place_order(p_name text, p_item uuid, p_notes text)
+returns public.orders
+language plpgsql security definer set search_path = public as $$
+declare
+  item public.menu_items;
+  o public.orders;
+begin
+  if not public.bar_is_open() then raise exception 'BAR_CLOSED'; end if;
+  select * into item from public.menu_items where id = p_item for update;
+  if not found then raise exception 'NO_SUCH_DRINK'; end if;
+  if not item.available or item.stock = 0 then raise exception 'SOLD_OUT'; end if;
+  if exists (select 1 from public.ingredients where key = any(item.needs) and not in_stock) then
+    raise exception 'SOLD_OUT';
+  end if;
+  if item.stock is not null then
+    update public.menu_items set stock = stock - 1, available = (stock - 1) > 0 where id = item.id;
+  end if;
+  insert into public.orders (guest_name, item_id, item_name, notes)
+    values (left(trim(p_name), 40), item.id, item.name, left(coalesce(trim(p_notes), ''), 200))
+    returning * into o;
+  return o;
+end $$;
+revoke execute on function public.place_order(text, uuid, text) from public, anon, authenticated;

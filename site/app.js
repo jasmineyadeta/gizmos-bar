@@ -17,15 +17,17 @@ async function load(first) {
   if (!configured) { $("status").textContent = "Setting up..."; return; }
   if (first) showLoader("Gizmo's opening up...");
   const started = Date.now();
-  const [s, m] = await Promise.all([
+  const [s, m, ing] = await Promise.all([
     sb.from("settings").select("*").eq("id", 1).single(),
     sb.from("menu_items").select("*").order("sort").order("name"),
+    sb.from("ingredients").select("key, name").eq("in_stock", false),
   ]);
   if (first) await sleep(Math.max(0, 1200 - (Date.now() - started)));
   hideLoader();
   if (s.error || m.error) { toast("Couldn't reach the bar. Pull down to retry."); return; }
   settings = s.data;
   menu = m.data;
+  missing = new Map((ing.data || []).map((x) => [x.key, x.name]));
   render();
 }
 
@@ -53,7 +55,14 @@ const MOODS = [
 ];
 let mood = null;
 let spirit = null;
-const isOut = (d) => !d.available || d.stock === 0;
+let missing = new Map();
+const PLACEHOLDER = "drinks/placeholder.svg";
+const isOut = (d) => !d.available || d.stock === 0 || (d.needs || []).some((k) => missing.has(k));
+
+function outLabel(d) {
+  const k = (d.needs || []).find((x) => missing.has(x));
+  return k && d.available && d.stock !== 0 ? `Out of ${missing.get(k).split(" /")[0].toLowerCase()}` : "All out";
+}
 
 function filtered() {
   const m = MOODS.find((x) => x.key === mood);
@@ -82,8 +91,8 @@ function renderBrowse(open) {
   $("menu").innerHTML = list.map((d) => {
     const out = isOut(d);
     return `<button class="tile ${out ? "out" : ""}" data-id="${d.id}" ${out || !open ? "disabled" : ""}>
-      ${d.image ? `<img src="${esc(d.image)}" alt="" loading="lazy">` : `<div class="ph">🍸</div>`}
-      ${out ? `<span class="badge-out">All out</span>` : ""}
+      <img src="${esc(d.image || PLACEHOLDER)}" alt="" loading="lazy">
+      ${out ? `<span class="badge-out">${esc(outLabel(d))}</span>` : ""}
       <b>${esc(d.name)}</b>
     </button>`;
   }).join("") || `<p class="muted empty">Nothing matches. Try another mood, or let Gizmo surprise you.</p>`;
@@ -121,8 +130,7 @@ function openDrink(d, surprise) {
   picked = d;
   $("sheetName").textContent = (surprise ? "🎲 " : "") + picked.name;
   $("sheetDesc").textContent = picked.description;
-  $("sheetImg").src = picked.image || "";
-  $("sheetImg").classList.toggle("hidden", !picked.image);
+  $("sheetImg").src = picked.image || PLACEHOLDER;
   $("notes").value = "";
   openSheet(true);
 }
