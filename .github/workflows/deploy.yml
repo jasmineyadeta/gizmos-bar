@@ -131,6 +131,19 @@ jobs:
             -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.result[]? | "\(.timestamp) \(.event_message)"' | head -40 || true
           [ "${code:0:1}" = "2" ]
 
+      - name: Smoke test ordering through the function
+        run: |
+          anon=$(sed -n 's/.*anonKey: "\([^"]*\)".*/\1/p' site/config.js)
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /tmp/f.json -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/bar" \
+              -H "apikey: $anon" -H "Content-Type: application/json" \
+              -d '{"action":"order","name":"Smoke test","item_id":"00000000-0000-0000-0000-000000000000"}')
+            echo "order (unknown drink) -> $code $(cat /tmp/f.json)"
+            [ "$code" = "409" ] && exit 0
+            sleep 10
+          done
+          echo "::error::Ordering is broken: the function couldn't run place_order"; exit 1
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

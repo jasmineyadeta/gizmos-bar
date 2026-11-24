@@ -140,6 +140,7 @@ begin
   return o;
 end $$;
 revoke execute on function public.place_order(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.place_order(text, uuid, text) to service_role;
 
 -- Lets a guest check whether their drink is ready, without exposing other orders.
 create or replace function public.order_status(p_id uuid) returns text
@@ -363,3 +364,4 @@ begin
   return o;
 end $$;
 revoke execute on function public.place_order(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.place_order(text, uuid, text) to service_role;
