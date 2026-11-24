@@ -301,3 +301,14 @@ a { color: var(--accent); }
 .req .del.danger { color: #ffb4a8; border-color: #ffb4a8; }
 #crewList .merged.is-hidden b { opacity: .55; }
 #crewList .danger { color: #ffb4a8; border-color: #ffb4a8; }
+.scan-btn { margin-bottom: 12px; }
+.scan-sheet { max-height: 92vh; overflow-y: auto; }
+.scan-view { position: relative; border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; margin-bottom: 12px; border: 1px solid var(--brass); }
+.scan-view video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scan-aim { position: absolute; left: 12%; right: 12%; top: 38%; bottom: 38%; border: 2px solid var(--accent); border-radius: 10px; box-shadow: 0 0 0 999px rgba(0,0,0,.25); }
+.scan-photo { display: block; text-align: center; cursor: pointer; }
+#scanState [data-st="in"].on { background: var(--good); color: #0a2418; }
+#scanState [data-st="low"].on { background: #f0a440; color: #2a1605; }
+#scanState [data-st="out"].on { background: var(--bad); color: #2a0b07; }
+label#scanTopRow:not(.hidden) { display: flex; gap: 10px; align-items: center; color: var(--text); }
+#scanTopRow input { flex: none; width: 22px; height: 22px; margin: 0; }

@@ -48,6 +48,7 @@
       </section>
 
       <section data-panel="stock" class="hidden">
+        <button class="btn btn-block scan-btn" id="scanBtn" type="button">📷 Scan a bottle</button>
         <p class="small muted">Ran out of something? Tap it to mark it <b>Out</b>. Every drink that needs it disappears from the guest menu until you tap it back to <b>Got it</b>.</p>
         <div id="stockList"></div>
         <form class="card stack" id="ingForm">
@@ -153,5 +154,21 @@
   </div>
 
   <script type="module" src="admin.js"></script>
+  <div class="sheet-bg" id="scanBg"></div>
+  <div class="sheet scan-sheet" id="scanSheet" role="dialog" aria-label="Scan a bottle">
+    <div id="scanCam">
+      <h2>Scan a bottle</h2>
+      <p class="d" id="scanHint">Point the camera at the barcode on the bottle.</p>
+      <div class="scan-view"><video id="scanVideo" playsinline muted></video><div class="scan-aim"></div></div>
+      <label class="btn-ghost btn-block scan-photo">📸 Take a photo of the barcode instead
+        <input type="file" id="scanPhoto" accept="image/*" capture="environment" hidden></label>
+      <form class="row" id="scanTypeForm" style="margin-top:10px">
+        <input class="grow" id="scanCode" inputmode="numeric" pattern="[0-9]*" maxlength="14" placeholder="Or type the numbers under it" aria-label="Barcode number">
+        <button class="btn btn-small">Look up</button>
+      </form>
+    </div>
+    <div id="scanOut" class="hidden"></div>
+    <button class="btn-ghost btn-block" id="scanClose" type="button" style="margin-top:10px">Done</button>
+  </div>
 </body>
 </html>

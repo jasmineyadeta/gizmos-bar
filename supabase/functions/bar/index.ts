@@ -1,6 +1,7 @@
 // Gizmos Bar edge function.
 //   { action: "order", name, item_id, notes, top_shelf? }  -> places an order, pushes to Gizmo
 //   { action: "test" } (owner auth header)      -> sends a test push
+//   { action: "lookup", code } (owner auth header) -> bottle name from free barcode databases
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import webpush from "npm:web-push@3.6.7";
 
@@ -50,6 +51,37 @@ const friendly: Record<string, string> = {
   NO_SUCH_DRINK: "That drink is no longer on the menu.",
 };
 
+async function isAdmin(req: Request) {
+  const key = req.headers.get("x-bar-key") ?? "";
+  if (!key) return false;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+  const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+  const { data: row } = await admin.from("admin_key").select("key_hash").eq("id", 1).maybeSingle();
+  return row?.key_hash === hash;
+}
+
+// Free barcode databases: Open Food Facts first (covers lots of drinks), then UPCitemdb's free tier.
+async function lookup(code: string) {
+  const get = async (url: string) => {
+    try {
+      const r = await fetch(url, { headers: { "User-Agent": "GizmosBar/1.0 (home bar stock app)", Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
+      return r.ok ? await r.json() : null;
+    } catch { return null; }
+  };
+  const offUrl = (c: string) => `https://world.openfoodfacts.org/api/v2/product/${c}.json?fields=product_name,brands,categories_tags,quantity`;
+  let off = await get(offUrl(code));
+  if (off?.status !== 1 && code.length === 12) off = await get(offUrl("0" + code));
+  const p = off?.product;
+  if (off?.status === 1 && p?.product_name) {
+    return { found: true, source: "Open Food Facts", name: p.product_name, brand: p.brands ?? "",
+      quantity: p.quantity ?? "", categories: (p.categories_tags ?? []).map((c: string) => c.replace(/^[a-z]{2}:/, "").replace(/-/g, " ")) };
+  }
+  const upc = await get(`https://api.upcitemdb.com/prod/trial/lookup?upc=${code}`);
+  const it = upc?.items?.[0];
+  if (it?.title) return { found: true, source: "UPCitemdb", name: it.title, brand: it.brand ?? "", quantity: it.size ?? "", categories: [it.category ?? ""] };
+  return { found: false };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
@@ -57,12 +89,15 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
 
+  if (body.action === "lookup") {
+    if (!(await isAdmin(req))) return json({ error: "Open the family admin link first." }, 403);
+    const code = String(body.code ?? "").replace(/\D/g, "");
+    if (code.length < 6 || code.length > 14) return json({ found: false });
+    return json(await lookup(code));
+  }
+
   if (body.action === "test") {
-    const key = req.headers.get("x-bar-key") ?? "";
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
-    const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
-    const { data: row } = await admin.from("admin_key").select("key_hash").eq("id", 1).maybeSingle();
-    if (!key || row?.key_hash !== hash) return json({ error: "Open the family admin link first." }, 403);
+    if (!(await isAdmin(req))) return json({ error: "Open the family admin link first." }, 403);
     const sent = await pushAll({ title: "THIS PERSON NEEDS A DRINK", body: "Test: Gizmo ordered an Old Fashioned", url: "./admin.html", tag: "test" });
     return json({ sent });
   }

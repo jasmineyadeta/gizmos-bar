@@ -216,6 +216,215 @@ $("ingForm").onsubmit = async (e) => {
   await loadIngredients(); renderStock(); renderMenu();
 };
 
+// ---------- Scan a bottle into stock ----------
+// Barcode -> ingredient links live in the barcodes table, so each bottle only needs naming once.
+const GUESS = [
+  [/\bnavy\b/, "navy_rum"], [/\b(dark|spiced|black|gold|aged|añejo) rum|\brum (dark|spiced|negro)/, "dark_rum"], [/\brum\b|\brhum\b|\bron\b/, "light_rum"],
+  [/scotch|single malt|blended malt|islay|speyside/, "scotch"], [/bourbon|\brye\b|whiske?y|tennessee/, "whiskey"],
+  [/\bgin\b|\bgins\b/, "gin"], [/vodka/, "vodka"], [/tequila|mezcal/, "tequila"], [/cognac|brandy|armagnac|calvados/, "brandy"],
+  [/(dry|extra dry|blanc|bianco|white) vermouth|vermouth (dry|extra dry|blanc|bianco)/, "dry_vermouth"], [/vermouth/, "sweet_vermouth"],
+  [/campari/, "campari"], [/triple sec|cointreau|grand marnier|cura[cç]ao/, "triple_sec"], [/cassis/, "cassis"],
+  [/ginger wine|stone'?s/, "ginger_wine"], [/prosecco|champagne|\bcava\b|sparkling|\bbrut\b|cr[eé]mant/, "sparkling"], [/\bport\b|porto/, "port"],
+  [/ros[eé]/, "rose_wine"], [/red wine|cabernet|merlot|pinot noir|shiraz|malbec|rioja|chianti|zinfandel/, "red_wine"],
+  [/white wine|chardonnay|sauvignon|pinot gri|riesling/, "white_wine"],
+  [/ginger beer/, "ginger_beer"], [/club soda|soda water|seltzer|sparkling water/, "soda"], [/tonic|\bcola\b|coke|lemonade|ginger ale|sprite/, "mixers"],
+  [/orange juice/, "orange_juice"], [/cranberry/, "cranberry"], [/clamato/, "clamato"], [/pineapple|passion/, "passion_pineapple"],
+  [/angostura|bitters/, "bitters"], [/grenadine/, "grenadine"], [/tabasco|worcestershire|hot sauce/, "hot_sauce"], [/simple syrup|sugar syrup/, "sugar"],
+  [/maraschino|cherr/, "cherries"],
+];
+function guessIngredient(info) {
+  const text = [info.name, info.brand, ...(info.categories || [])].join(" ").toLowerCase();
+  for (const [re, k] of GUESS) if (re.test(text) && ingredients.some((i) => i.key === k)) return k;
+  const hit = ingredients.filter((i) => text.includes(i.name.toLowerCase())).sort((a, b) => b.name.length - a.name.length)[0];
+  return hit?.key || "";
+}
+const keyFor = (name) => name.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `ing_${Date.now()}`;
+async function saveState(ing, next) {
+  const patch = { in_stock: next !== "out", low: next === "low" };
+  const { error } = await sb.from("ingredients").update(patch).eq("key", ing.key);
+  if (!error) Object.assign(ing, patch);
+  return error;
+}
+
+let reader = null;
+function loadZxing() {
+  if (window.ZXing) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = "vendor/zxing-0.21.3.min.js"; s.onload = res; s.onerror = rej; document.head.append(s);
+  });
+}
+function newReader() {
+  const Z = window.ZXing, hints = new Map();
+  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.EAN_13, Z.BarcodeFormat.EAN_8, Z.BarcodeFormat.UPC_A, Z.BarcodeFormat.UPC_E, Z.BarcodeFormat.CODE_128]);
+  hints.set(Z.DecodeHintType.TRY_HARDER, true);
+  return new Z.BrowserMultiFormatReader(hints, 250);
+}
+let stream = null, scanTimer = null;
+function stopCamera() {
+  clearInterval(scanTimer); scanTimer = null;
+  stream?.getTracks().forEach((t) => t.stop()); stream = null;
+  $("scanVideo").srcObject = null;
+}
+function showScanPart(part) { $("scanCam").classList.toggle("hidden", part !== "cam"); $("scanOut").classList.toggle("hidden", part !== "out"); }
+// Grab a frame every 300ms and look for a barcode (more reliable on iPhone than the library's own loop).
+async function startCamera() {
+  showScanPart("cam");
+  $("scanHint").textContent = "Point the camera at the barcode on the bottle.";
+  stopCamera();
+  try {
+    await loadZxing();
+    const Z = window.ZXing, rd = newReader(), v = $("scanVideo");
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+    v.srcObject = stream;
+    await v.play().catch(() => {});
+    const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+    scanTimer = setInterval(() => {
+      if (!v.videoWidth || !stream) return;
+      canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+      ctx.drawImage(v, 0, 0);
+      let code;
+      try { code = rd.decodeBitmap(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)))).getText(); } catch { return; }
+      navigator.vibrate?.(60); stopCamera(); handleCode(code);
+    }, 300);
+  } catch (err) {
+    console.warn(err);
+    stopCamera();
+    $("scanHint").textContent = "The camera isn't available here. Take a photo of the barcode, or type the numbers under it.";
+  }
+}
+function openScan() {
+  $("scanBg").classList.add("show"); $("scanSheet").classList.add("show");
+  startCamera();
+}
+function closeScan() {
+  stopCamera();
+  $("scanBg").classList.remove("show"); $("scanSheet").classList.remove("show");
+}
+$("scanBtn").onclick = openScan;
+$("scanClose").onclick = closeScan;
+$("scanBg").onclick = closeScan;
+$("scanTypeForm").onsubmit = (e) => {
+  e.preventDefault();
+  const code = $("scanCode").value.replace(/\D/g, "");
+  if (code.length < 6) return toast("Type all the numbers under the barcode.");
+  stopCamera(); $("scanCode").value = ""; handleCode(code);
+};
+$("scanPhoto").onchange = async () => {
+  const f = $("scanPhoto").files[0]; if (!f) return;
+  $("scanPhoto").value = "";
+  try {
+    await loadZxing();
+    const url = URL.createObjectURL(f);
+    const result = await newReader().decodeFromImageUrl(url);
+    URL.revokeObjectURL(url);
+    stopCamera(); handleCode(result.getText());
+  } catch {
+    toast("Couldn't read a barcode in that photo. Get closer and try again.");
+  }
+};
+
+const stateSeg = (st) => `<div class="seg3" id="scanState" role="group" aria-label="Stock level">
+  ${[["in", "Got it"], ["low", "Running low"], ["out", "Out"]].map(([k, l]) => `<button type="button" data-st="${k}" class="${st === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
+const again = `<button class="btn btn-block" type="button" data-again>📷 Scan another</button>`;
+
+let scanned = null; // { code, info }
+async function handleCode(raw) {
+  // A UPC can read as 12 digits or as 13 with a leading 0; store one form so rescans match.
+  const code = String(raw).trim().replace(/^0(\d{12})$/, "$1");
+  showScanPart("out");
+  $("scanOut").innerHTML = `<h2>Looking it up…</h2><p class="d">Barcode ${esc(code)}</p>`;
+  const { data: known } = await sb.from("barcodes").select("*").eq("code", code).maybeSingle();
+  const ing = known && ingredients.find((i) => i.key === known.ingredient_key);
+  if (ing) {
+    const was = stateOf(ing);
+    const err = was === "in" ? null : await saveState(ing, "in");
+    if (err) toast("Couldn't save that.");
+    renderStock(); renderMenu();
+    scanned = { code, info: { found: true, name: known.product || "" }, ing };
+    $("scanOut").innerHTML = `<h2>✅ ${esc(ing.name)}</h2>
+      <p class="d">${known.product ? esc(known.product) + ". " : ""}${was === "in" ? "Already marked Got it." : "Marked Got it."}</p>
+      ${stateSeg("in")}
+      <p class="small"><a href="#" data-relink>Not ${esc(ing.name)}? Change it</a></p>${again}`;
+    return;
+  }
+  let info = { found: false };
+  try { info = await callFn({ action: "lookup", code }, null, { "x-bar-key": key }); } catch {}
+  scanned = { code, info };
+  renderPick(info.found ? guessIngredient(info) : "");
+}
+function renderPick(guess) {
+  const { code, info } = scanned;
+  const product = info.found ? (info.name.toLowerCase().includes((info.brand || "").toLowerCase()) ? info.name : `${info.brand} ${info.name}`).trim() : "";
+  const opts = grouped().map(([g, list]) => `<optgroup label="${esc(g)}">${list.map((i) =>
+    `<option value="${esc(i.key)}" ${i.key === guess ? "selected" : ""}>${esc(i.name)}</option>`).join("")}</optgroup>`).join("");
+  $("scanOut").innerHTML = `
+    <h2>${info.found ? esc(product) : "New bottle"}</h2>
+    <p class="d">${info.found ? (guess ? "Looks like this goes under the ingredient below. Check it and save." : "Which ingredient is this?") : "Couldn't find this one online. Which ingredient is it?"}</p>
+    <div class="stack">
+      <div><label for="scanIng">Ingredient</label>
+        <select id="scanIng"><option value="">Pick one…</option>${opts}<option value="__new">➕ Something new…</option></select></div>
+      <div id="scanNew" class="hidden stack">
+        <div><label for="scanNewName">New ingredient name</label><input id="scanNewName" maxlength="40" placeholder="e.g. Aperol" value="${esc(product.slice(0, 40))}"></div>
+        <div><label for="scanNewGrp">Group</label><select id="scanNewGrp">${GROUPS.map((g) => `<option>${esc(g)}</option>`).join("")}</select></div>
+      </div>
+      <div><label>How much is there?</label>${stateSeg("in")}</div>
+      <label class="row hidden" id="scanTopRow"><input type="checkbox" id="scanTop" style="width:auto"> <span>⭐ Offer <b>${esc(product || "this bottle")}</b> as the top shelf pick</span></label>
+      <input id="scanProduct" type="hidden" value="${esc(product)}">
+      ${!info.found ? `<div><label for="scanLabel">Bottle name (optional)</label><input id="scanLabel" maxlength="80" placeholder="e.g. Tanqueray London Dry"></div>` : ""}
+      <button class="btn btn-block" type="button" id="scanSave">Save to stock</button>
+    </div>`;
+  const sync = () => {
+    const k = $("scanIng").value;
+    $("scanNew").classList.toggle("hidden", k !== "__new");
+    const grp = k === "__new" ? $("scanNewGrp").value : ingredients.find((i) => i.key === k)?.grp;
+    $("scanTopRow").classList.toggle("hidden", !TOP_SHELF_GROUPS.includes(grp));
+  };
+  $("scanIng").onchange = sync; $("scanNewGrp").onchange = sync; sync();
+  $("scanSave").onclick = saveScan;
+}
+async function saveScan() {
+  const { code } = scanned;
+  let k = $("scanIng").value;
+  if (!k) return toast("Pick which ingredient this is.");
+  const btn = $("scanSave"); btn.disabled = true;
+  try {
+    if (k === "__new") {
+      const name = $("scanNewName").value.trim();
+      if (!name) { toast("Give the new ingredient a name."); return; }
+      k = keyFor(name);
+      if (!ingredients.some((i) => i.key === k)) {
+        const { error } = await sb.from("ingredients").insert({ key: k, name, grp: $("scanNewGrp").value, sort: ingredients.length + 1 });
+        if (error) { toast("Couldn't add that ingredient."); return; }
+        await loadIngredients();
+        if (!ingredients.some((i) => i.key === k)) ingredients.push({ key: k, name, grp: $("scanNewGrp").value, in_stock: true, low: false });
+      }
+    }
+    const ing = ingredients.find((i) => i.key === k);
+    const product = ($("scanProduct").value || $("scanLabel")?.value || "").trim() || null;
+    const { error } = await sb.from("barcodes").upsert({ code, ingredient_key: k, product });
+    if (error) { toast("Couldn't remember that barcode."); return; }
+    const st = $("scanState").querySelector(".on")?.dataset.st || "in";
+    if (await saveState(ing, st)) { toast("Couldn't save the stock level."); return; }
+    if ($("scanTop")?.checked && product && !$("scanTopRow").classList.contains("hidden")) {
+      const { error: e2 } = await sb.from("ingredients").update({ top_shelf: product.slice(0, 60) }).eq("key", k);
+      if (!e2) ing.top_shelf = product.slice(0, 60);
+    }
+    renderStock(); renderMenu();
+    scanned.ing = ing;
+    $("scanOut").innerHTML = `<h2>✅ Saved</h2><p class="d">${product ? esc(product) + " is filed under " : "Filed under "}<b>${esc(ing.name)}</b>. Next time you scan it, it's instant.</p>${again}`;
+  } finally { btn.disabled = false; }
+}
+$("scanOut").onclick = async (e) => {
+  if (e.target.closest("[data-again]")) return startCamera();
+  if (e.target.closest("[data-relink]")) { e.preventDefault(); return renderPick(scanned.ing?.key || ""); }
+  const b = e.target.closest("#scanState [data-st]"); if (!b) return;
+  $("scanState").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+  if (scanned?.ing && !$("scanSave")) {
+    if (await saveState(scanned.ing, b.dataset.st)) return toast("Couldn't save that.");
+    toast(`${scanned.ing.name}: ${b.textContent}`); renderStock(); renderMenu();
+  }
+};
+
 // ---------- Menu ----------
 const TAGS = [["fizzy", "🫧 Fizzy"], ["citrusy", "🍋 Citrusy"], ["strong", "🥃 Strong"], ["fruity", "🍓 Fruity"],
   ["sweet", "🍬 Sweet"], ["warming", "🔥 Warming"], ["savory", "🌶️ Savory"]];

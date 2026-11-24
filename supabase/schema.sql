@@ -793,3 +793,15 @@ begin
   delete from public.requests where true;
 end $$;
 grant execute on function public.reset_requests() to anon, authenticated;
+
+-- Barcode scanning (2026-11-24): remember which bottle barcode is which ingredient, so rescans are instant.
+create table if not exists public.barcodes (
+  code text primary key check (code ~ '^[0-9A-Za-z-]{4,40}$'),
+  ingredient_key text not null references public.ingredients(key) on delete cascade on update cascade,
+  product text,
+  created_at timestamptz not null default now()
+);
+alter table public.barcodes enable row level security;
+drop policy if exists "barcodes owner" on public.barcodes;
+create policy "barcodes owner" on public.barcodes for all using (public.is_owner()) with check (public.is_owner());
+grant select, insert, update, delete on public.barcodes to anon, authenticated;

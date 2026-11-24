@@ -160,6 +160,23 @@ jobs:
           done
           echo "::error::Ordering is broken: the function couldn't run place_order"; exit 1
 
+      - name: Barcode lookup (needs the admin link; free databases reachable)
+        run: |
+          anon=$(sed -n 's/.*anonKey: "\([^"]*\)".*/\1/p' site/config.js)
+          code=$(curl -s -o /tmp/l.json -w '%{http_code}' -X POST "https://$REF.supabase.co/functions/v1/bar" \
+            -H "apikey: $anon" -H "Content-Type: application/json" -d '{"action":"lookup","code":"5000289925440"}')
+          echo "lookup without admin link -> $code $(cat /tmp/l.json)"
+          [ "$code" = "403" ] || { echo "::error::Barcode lookup should need the admin link"; exit 1; }
+          echo "Open Food Facts liquor coverage (info only):"
+          for c in gins vodkas whiskies rums tequilas; do
+            n=$(curl -s -m 20 -A "GizmosBar/1.0 (CI)" "https://world.openfoodfacts.org/api/v2/search?categories_tags_en=$c&fields=code&page_size=1" | jq -r '.count // "?"')
+            echo "  $c: $n products"
+          done
+          ex=$(curl -s -m 20 -A "GizmosBar/1.0 (CI)" "https://world.openfoodfacts.org/api/v2/search?categories_tags_en=gins&fields=code,product_name,brands&page_size=3&countries_tags_en=united-states" | jq -c '[.products[]? | {code, product_name, brands}]')
+          echo "  sample US gins: $ex"
+          c1=$(echo "$ex" | jq -r '.[0].code // empty')
+          [ -n "$c1" ] && echo "  UPCitemdb for $c1: $(curl -s -m 20 "https://api.upcitemdb.com/prod/trial/lookup?upc=$c1" | jq -c '.items[0] | {title, brand}' 2>/dev/null)" || true
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

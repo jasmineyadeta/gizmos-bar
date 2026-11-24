@@ -182,6 +182,20 @@ do $$ declare a uuid; v1 text := gen_random_uuid()::text; v2 text := gen_random_
   exception when others then if sqlerrm <> 'TOO_MANY' then raise; end if; end;
 end $$;
 
+-- Barcode scanning: admin remembers a bottle, guests can't see the list -------------------
+do $$ begin
+  insert into public.barcodes (code, ingredient_key, product) values ('0000000000017', current_setting('e2e.spirit'), 'CI Bottle');
+  if (select ingredient_key from public.barcodes where code = '0000000000017') <> current_setting('e2e.spirit') then raise exception 'FAIL: barcode not remembered'; end if;
+  update public.barcodes set product = 'CI Bottle 2' where code = '0000000000017';
+end $$;
+select set_config('request.headers', '{}', true);
+do $$ begin
+  if exists (select 1 from public.barcodes) then raise exception 'FAIL: guests can read barcodes'; end if;
+  begin insert into public.barcodes (code, ingredient_key) values ('0000000000024', 'gin'); raise exception 'FAIL: guest saved a barcode';
+  exception when insufficient_privilege then null; end;
+end $$;
+select set_config('request.headers', '{"x-bar-key":"ci-e2e-key"}', true);
+
 -- Push alerts: at least the setup exists (sending is checked separately) ------------------
 reset role;
 do $$ begin
