@@ -47,10 +47,10 @@ function render() {
 const MOODS = [
   { key: "fizzy", label: "🫧 Fizzy", tags: ["fizzy"] },
   { key: "citrusy", label: "🍋 Citrusy", tags: ["citrusy", "tart"] },
-  { key: "strong", label: "🥃 Strong & stirred", tags: ["strong", "stirred"] },
+  { key: "strong", label: "🥃 Strong", tags: ["strong", "stirred"] },
   { key: "fruity", label: "🍓 Fruity", tags: ["fruity"] },
   { key: "sweet", label: "🍬 Sweet", tags: ["sweet"] },
-  { key: "warming", label: "🔥 Warming & spicy", tags: ["warming", "spicy"] },
+  { key: "warming", label: "🔥 Warming", tags: ["warming", "spicy"] },
   { key: "savory", label: "🌶️ Savory", tags: ["savory"] },
 ];
 let mood = null;
@@ -76,16 +76,25 @@ function renderBrowse(open) {
   const moods = MOODS.filter((m) => m.tags.some((t) => usedTags.has(t)));
   $("moods").innerHTML = moods.map((m) =>
     `<button class="chip ${mood === m.key ? "on" : ""}" data-mood="${m.key}">${m.label}</button>`).join("");
-  const ORDER = ["Highballs", "Gin", "Vodka", "Tequila", "Rum", "Whisky", "Wine & Brandy"];
+  const ORDER = ["Gin", "Vodka", "Tequila", "Rum", "Whisky", "Wine & Brandy", "Highballs"];
+  const COVER = { Gin: "Dry Martini", Vodka: "Moscow Mule", Tequila: "Margarita", Rum: "Mojito", Whisky: "Old Fashioned", "Wine & Brandy": "Kir Royale" };
   const rank = (c) => (ORDER.indexOf(c) + 1) || 99;
   const spirits = [...new Set(menu.map((d) => d.category))].sort((a, b) => rank(a) - rank(b));
-  $("spirits").innerHTML = [`<button class="chip ${!spirit ? "on" : ""}" data-spirit="">Any spirit</button>`]
-    .concat(spirits.map((c) => `<button class="chip ${spirit === c ? "on" : ""}" data-spirit="${esc(c)}">${esc(c)}</button>`)).join("");
+  const cover = (c) => {
+    const inCat = menu.filter((d) => d.category === c);
+    return (inCat.find((d) => d.name === COVER[c] && d.image) || inCat.find((d) => d.image))?.image || PLACEHOLDER;
+  };
+  $("spirits").innerHTML = [`<button class="circ ${!spirit ? "on" : ""}" data-spirit=""><span class="ring all">🍸</span>All</button>`]
+    .concat(spirits.map((c) => `<button class="circ ${spirit === c ? "on" : ""}" data-spirit="${esc(c)}"><span class="ring"><img src="${esc(cover(c))}" alt=""></span>${esc(c)}</button>`)).join("");
+  const sel = $("spirits").querySelector(".on");
+  if (sel && spirit) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
 
   const list = filtered().sort((a, b) => isOut(a) - isOut(b));
   const avail = list.filter((d) => !isOut(d)).length;
+  const moodName = MOODS.find((x) => x.key === mood)?.label.split(" ").slice(1).join(" ").toLowerCase();
+  const kind = spirit && !["Highballs", "Wine & Brandy"].includes(spirit) ? `${spirit.toLowerCase()} ` : "";
   $("count").textContent = list.length
-    ? `${avail} drink${avail === 1 ? "" : "s"} ${mood || spirit ? "match" + (avail === 1 ? "es" : "") : "on the menu"}`
+    ? `${avail} ${kind}drink${avail === 1 ? "" : "s"}${spirit && !kind ? ` in ${spirit}` : ""}${moodName ? ` · ${moodName}` : ""}${!mood && !spirit ? " on the menu" : ""}`
     : "";
   $("surprise").disabled = !open || !avail;
   $("menu").innerHTML = list.map((d) => {
@@ -95,7 +104,7 @@ function renderBrowse(open) {
       ${out ? `<span class="badge-out">${esc(outLabel(d))}</span>` : ""}
       <b>${esc(d.name)}</b>
     </button>`;
-  }).join("") || `<p class="muted empty">Nothing matches. Try another mood, or let Gizmo surprise you.</p>`;
+  }).join("") || `<p class="muted empty">Nothing matches. Try another mood or spirit.</p>`;
 }
 
 $("moods").addEventListener("click", (e) => {
