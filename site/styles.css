@@ -84,13 +84,15 @@ button { font: inherit; cursor: pointer; border: 0; border-radius: 12px; padding
 .loader-text { font-family: "Fraunces", Georgia, serif; font-size: 22px; margin: 12px 0 0; }
 
 /* Gizmo animation */
-.gizmo .gz-arm { transform-box: view-box; transform-origin: 170px 212px; animation: gz-shake .32s ease-in-out infinite alternate; }
+.gizmo .gz-arm { transform-box: view-box; transform-origin: 162px 214px; animation: gz-shake .32s ease-in-out infinite alternate; }
+.gizmo .gz-shaker { animation: gz-rattle .16s ease-in-out infinite alternate; }
 .gizmo .gz-head { transform-box: view-box; transform-origin: 120px 180px; animation: gz-bob .64s ease-in-out infinite alternate; }
 .gizmo .gz-lines { animation: gz-flash .32s steps(2) infinite; }
-@keyframes gz-shake { from { transform: rotate(-9deg) translateY(4px); } to { transform: rotate(8deg) translateY(-6px); } }
+@keyframes gz-shake { from { transform: rotate(-5deg); } to { transform: rotate(4deg) translateY(-3px); } }
+@keyframes gz-rattle { from { transform: translate(-3px, 1px); } to { transform: translate(3px, -1px); } }
 @keyframes gz-bob { from { transform: rotate(-2deg); } to { transform: rotate(2.5deg) translateY(-1px); } }
 @keyframes gz-flash { 0% { opacity: 1; } 100% { opacity: .15; } }
-.hero .gizmo .gz-arm, .hero .gizmo .gz-head { animation-duration: .9s, 1.8s; }
+.hero .gizmo .gz-arm { animation-duration: .9s; } .hero .gizmo .gz-head { animation-duration: 1.8s; } .hero .gizmo .gz-shaker { animation-duration: .45s; }
 .hero .gizmo .gz-lines { display: none; }
 @media (prefers-reduced-motion: reduce) { .gizmo * { animation-duration: 2s !important; } }
 

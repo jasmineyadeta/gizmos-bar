@@ -4,15 +4,17 @@ export { showLoader, hideLoader, GIZMO_SVG } from "./gizmo.js";
 const cfg = window.BAR_CONFIG || {};
 export const configured = Boolean(cfg.url && cfg.anonKey);
 export const sb = configured ? createClient(cfg.url, cfg.anonKey) : null;
+export const makeClient = (headers) => createClient(cfg.url, cfg.anonKey, { global: { headers }, auth: { persistSession: false } });
 export const fnUrl = configured ? `${cfg.url}/functions/v1/bar` : "";
 
-export async function callFn(body, token) {
+export async function callFn(body, token, extra = {}) {
   const res = await fetch(fnUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       apikey: cfg.anonKey,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...extra,
     },
     body: JSON.stringify(body),
   });

@@ -6,7 +6,7 @@ import webpush from "npm:web-push@3.6.7";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-bar-key",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -58,11 +58,11 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
 
   if (body.action === "test") {
-    const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-    const { data: u } = await admin.auth.getUser(token);
-    if (!u?.user) return json({ error: "Sign in first" }, 401);
-    const { data: own } = await admin.from("owners").select("user_id").eq("user_id", u.user.id).maybeSingle();
-    if (!own) return json({ error: "Owner only" }, 403);
+    const key = req.headers.get("x-bar-key") ?? "";
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key));
+    const hash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    const { data: row } = await admin.from("admin_key").select("key_hash").eq("id", 1).maybeSingle();
+    if (!key || row?.key_hash !== hash) return json({ error: "Open the family admin link first." }, 403);
     const sent = await pushAll({ title: "THIS PERSON NEEDS A DRINK", body: "Test: Gizmo ordered an Old Fashioned", url: "./admin.html", tag: "test" });
     return json({ sent });
   }

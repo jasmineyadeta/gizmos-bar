@@ -1,7 +1,6 @@
-import { sb, configured, callFn, isOpen, DAYS, toast, esc, showLoader, hideLoader, GIZMO_SVG } from "./common.js";
+import { makeClient, configured, callFn, isOpen, DAYS, toast, esc, showLoader, hideLoader, GIZMO_SVG } from "./common.js";
 
 const $ = (id) => document.getElementById(id);
-let user = null;
 let settings = null;
 let menu = [];
 
@@ -10,56 +9,52 @@ $("guestLink").href = new URL("./", location.href).href;
 $("guestLink").textContent = new URL("./", location.href).href;
 $("qr").src = "qr.png";
 
-// ---------- Auth ----------
-let firstTime = false;
+// ---------- Family admin link ----------
+// The link looks like admin.html?k=CODE. The code is remembered on this device,
+// and sent with every change so the database knows it's family.
+let sb = null;
+let key = "";
+
+function readKey(text) {
+  const t = String(text || "").trim();
+  try { return new URL(t).searchParams.get("k") || ""; } catch { return t; }
+}
+function saveKey(k) { try { localStorage.setItem("barKey", k); } catch {} }
+function loadKey() { try { return localStorage.getItem("barKey") || ""; } catch { return ""; } }
+
+async function tryKey(k) {
+  if (!k) return false;
+  const client = makeClient({ "x-bar-key": k });
+  const { data } = await client.rpc("has_admin_key");
+  if (data !== true) return false;
+  sb = client; key = k; saveKey(k);
+  return true;
+}
 
 async function boot() {
   if (!configured) { document.body.innerHTML = "<main><p>Still being set up. Check back soon.</p></main>"; return; }
   showLoader("Gizmo's warming up...");
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    user = session.user;
-    if (await ensureOwner()) return startApp();
-  }
-  const { data: exists } = await sb.rpc("owner_exists");
-  firstTime = exists === false;
-  if (firstTime) {
-    $("authHint").textContent = "First time here! Pick the email and password Gizmo will use to sign in.";
-    $("authBtn").textContent = "Create owner login";
-    $("pw").autocomplete = "new-password";
-  }
+  const fromUrl = new URLSearchParams(location.search).get("k");
+  if (await tryKey(fromUrl || loadKey())) return startApp();
   hideLoader();
+  if (fromUrl) $("authHint").textContent = "That link doesn't work anymore. Ask for the new one.";
   $("authView").classList.remove("hidden");
-}
-
-async function ensureOwner() {
-  const { data: owner } = await sb.rpc("claim_owner");
-  if (owner) return true;
-  await sb.auth.signOut();
-  user = null;
-  toast("That account isn't the bar owner.");
-  return false;
 }
 
 $("authForm").onsubmit = async (e) => {
   e.preventDefault();
-  const email = $("email").value.trim();
-  const password = $("pw").value;
-  showLoader(firstTime ? "Setting up your bar..." : "Signing in...");
-  const { data, error } = firstTime
-    ? await sb.auth.signUp({ email, password })
-    : await sb.auth.signInWithPassword({ email, password });
-  if (error || !data.session) {
-    hideLoader();
-    toast(error?.message === "Invalid login credentials" ? "Wrong email or password." : (error?.message || "Couldn't sign in."));
-    return;
-  }
-  user = data.session.user;
-  if (await ensureOwner()) { $("authView").classList.add("hidden"); startApp(); }
-  else hideLoader();
+  showLoader("Checking...");
+  if (await tryKey(readKey($("keyIn").value))) { $("authView").classList.add("hidden"); return startApp(); }
+  hideLoader();
+  toast("That link or code doesn't work.");
 };
 
-$("signOut").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+$("signOut").onclick = async () => {
+  if ($("signOut").dataset.confirm !== "1") { $("signOut").dataset.confirm = "1"; $("signOut").textContent = "Tap again to forget this phone"; return; }
+  await turnOffPush();
+  try { localStorage.removeItem("barKey"); } catch {}
+  location.href = "./admin.html";
+};
 
 // ---------- App ----------
 async function startApp() {
@@ -242,12 +237,14 @@ const pushSupported = "serviceWorker" in navigator && "PushManager" in window &&
 async function refreshPushState() {
   $("installHelp").classList.toggle("hidden", standalone && pushSupported);
   if (!pushSupported) {
+    $("pushOff").classList.add("hidden");
     $("pushState").textContent = "Alerts need this page added to your Home Screen first (steps below).";
     $("pushOn").disabled = true;
     return;
   }
   const reg = await navigator.serviceWorker.ready;
   const sub = await reg.pushManager.getSubscription();
+  $("pushOff").classList.toggle("hidden", !sub);
   if (sub && Notification.permission === "granted") {
     $("pushState").textContent = "Drink alerts are on for this phone.";
     $("pushOn").textContent = "Re-connect drink alerts";
@@ -273,7 +270,7 @@ $("pushOn").onclick = async () => {
     let sub = await reg.pushManager.getSubscription();
     if (sub) await sub.unsubscribe();
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(cfg.value) });
-    const { error } = await sb.from("push_subscriptions").upsert({ endpoint: sub.endpoint, subscription: sub.toJSON(), user_id: user.id });
+    const { error } = await sb.from("push_subscriptions").upsert({ endpoint: sub.endpoint, subscription: sub.toJSON() });
     if (error) throw error;
     toast("Drink alerts are on!");
   } catch (err) {
@@ -285,10 +282,23 @@ $("pushOn").onclick = async () => {
 
 $("pushTest").onclick = async () => {
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    const { sent } = await callFn({ action: "test" }, session.access_token);
+    const { sent } = await callFn({ action: "test" }, null, { "x-bar-key": key });
     toast(sent ? `Test sent to ${sent} phone${sent > 1 ? "s" : ""}` : "No phones have alerts turned on yet.");
   } catch (err) { toast(err.message); }
+};
+
+async function turnOffPush() {
+  if (!pushSupported) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return;
+  await sb?.from("push_subscriptions").delete().eq("endpoint", sub.endpoint);
+  await sub.unsubscribe();
+}
+$("pushOff").onclick = async () => {
+  await turnOffPush();
+  toast("Alerts are off on this phone.");
+  refreshPushState();
 };
 
 boot();

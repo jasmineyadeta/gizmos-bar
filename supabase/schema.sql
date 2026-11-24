@@ -199,3 +199,39 @@ grant select, insert, update, delete on public.menu_items, public.orders, public
 grant select on public.owners to authenticated;
 grant execute on function public.owner_exists(), public.order_status(uuid), public.bar_is_open(), public.is_owner() to anon, authenticated;
 grant execute on function public.claim_owner() to authenticated;
+
+-- Family admin link -------------------------------------------------------
+-- Anyone opening admin.html?k=<key> can manage the bar. Only the SHA-256 of the
+-- key lives here (this repo is public). To change the link, replace the hash.
+create table if not exists public.admin_key (
+  id int primary key default 1 check (id = 1),
+  key_hash text not null
+);
+alter table public.admin_key enable row level security;
+revoke all on public.admin_key from anon, authenticated;
+insert into public.admin_key (id, key_hash) values (1, '7837e3952d7a1369218c49b46d176a4bfef25af54d2e4b5d1f1d2a66d642c706')
+  on conflict (id) do update set key_hash = excluded.key_hash;
+
+create or replace function public.has_admin_key() returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.admin_key
+    where key_hash = encode(sha256(convert_to(coalesce(
+      nullif(current_setting('request.headers', true), '')::json ->> 'x-bar-key', ''), 'UTF8')), 'hex')
+  );
+$$;
+grant execute on function public.has_admin_key() to anon, authenticated;
+
+-- Owner = signed-in owner account OR anyone holding the family admin link.
+create or replace function public.is_owner() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.has_admin_key()
+      or exists (select 1 from public.owners where user_id = auth.uid());
+$$;
+
+grant update on public.settings to anon;
+grant select, insert, update, delete on public.menu_items, public.orders, public.push_subscriptions to anon;
+
+drop policy if exists "push owner" on public.push_subscriptions;
+create policy "push owner" on public.push_subscriptions for all
+  using (public.is_owner()) with check (public.is_owner());

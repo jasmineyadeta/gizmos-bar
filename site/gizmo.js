@@ -6,6 +6,9 @@ export const GIZMO_SVG = `
       <stop offset="0" stop-color="#8d949c"/><stop offset=".35" stop-color="#f4f6f8"/>
       <stop offset=".6" stop-color="#c3c8ce"/><stop offset="1" stop-color="#7c838b"/>
     </linearGradient>
+    <linearGradient id="gz-steel-v" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f6f8"/><stop offset=".45" stop-color="#c3c8ce"/><stop offset="1" stop-color="#7c838b"/>
+    </linearGradient>
     <linearGradient id="gz-skin" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#f6cfae"/><stop offset="1" stop-color="#e9b08c"/>
     </linearGradient>
@@ -56,25 +59,28 @@ export const GIZMO_SVG = `
     <path d="M101 157 Q120 163 139 157 L137 162 Q120 167 103 162 Z" fill="#fff"/>
   </g>
 
-  <!-- arm + shaker -->
+  <!-- arm + shaker: raised from his left shoulder, shaker held sideways -->
   <g class="gz-arm">
-    <path d="M168 210 Q196 190 200 150" stroke="#a9afb6" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M160 214 Q188 206 212 182" stroke="#a9afb6" stroke-width="26" fill="none" stroke-linecap="round"/>
+    <path d="M212 182 Q224 136 201 92" stroke="#a9afb6" stroke-width="21" fill="none" stroke-linecap="round"/>
+    <path d="M220 132 L206 126" stroke="#959ba2" stroke-width="2" stroke-linecap="round"/>
     <g class="gz-shaker">
-      <path d="M186 140 L214 140 L210 72 L190 72 Z" fill="url(#gz-steel)" stroke="#6c737a" stroke-width="1.5"/>
-      <path d="M190 72 L210 72 L206 56 L194 56 Z" fill="url(#gz-steel)" stroke="#6c737a" stroke-width="1.5"/>
-      <rect x="195" y="46" width="10" height="11" rx="3" fill="url(#gz-steel)" stroke="#6c737a" stroke-width="1.5"/>
-      <path d="M189 104 L211 104" stroke="#6c737a" stroke-width="1.5"/>
-      <path d="M193 80 L194 132" stroke="#fff" stroke-width="3" opacity=".6" stroke-linecap="round"/>
+      <g transform="translate(3 -32) rotate(-14 200 104)">
+        <path d="M172 92 L210 88 L210 120 L172 116 Z" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
+        <path d="M210 88 L222 92 L222 116 L210 120 Z" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
+        <rect x="222" y="98" width="9" height="12" rx="3" fill="url(#gz-steel-v)" stroke="#6c737a" stroke-width="1.5"/>
+        <path d="M176 96 L206 93" stroke="#fff" stroke-width="3" opacity=".65" stroke-linecap="round"/>
+      </g>
     </g>
-    <ellipse cx="200" cy="140" rx="15" ry="12" fill="#eab48f"/>
-    <path d="M189 136 Q200 131 211 136" stroke="#cf8f6b" stroke-width="1.5" fill="none"/>
+    <ellipse cx="199" cy="80" rx="13" ry="11" fill="#eab48f"/>
+    <path d="M189 74 Q199 69 209 73 M190 80 Q199 76 208 79" stroke="#cf8f6b" stroke-width="1.4" fill="none"/>
   </g>
 
   <!-- shake lines -->
   <g class="gz-lines" stroke="#f5b041" stroke-width="3" stroke-linecap="round" fill="none">
-    <path d="M226 64 Q234 80 228 96"/>
-    <path d="M178 46 Q170 34 174 22"/>
-    <path d="M226 110 Q234 120 230 132"/>
+    <path d="M234 40 Q240 52 236 64"/>
+    <path d="M232 92 Q238 102 234 114"/>
+    <path d="M184 46 Q178 36 182 26"/>
   </g>
 </svg>`;
 
