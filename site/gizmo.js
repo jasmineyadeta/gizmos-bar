@@ -90,12 +90,20 @@ export const GIZMO_SVG = `
   </g>
 </svg>`;
 
+// Each copy on the page needs its own gradient ids: if two copies share them, a copy
+// can borrow colours from one that's hidden and render with a black face.
+let copies = 0;
+export function gizmoSvg() {
+  const n = ++copies;
+  return GIZMO_SVG.replace(/(id="|url\(#)(gz-[a-z-]+)/g, `$1$2-${n}`);
+}
+
 let loaderEl;
 export function showLoader(text = "Gizmo's mixing...") {
   if (!loaderEl) {
     loaderEl = document.createElement("div");
     loaderEl.className = "loader";
-    loaderEl.innerHTML = `${GIZMO_SVG}<p class="loader-text"></p>`;
+    loaderEl.innerHTML = `${gizmoSvg()}<p class="loader-text"></p>`;
     document.body.appendChild(loaderEl);
   }
   loaderEl.querySelector(".loader-text").textContent = text;

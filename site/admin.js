@@ -1,10 +1,10 @@
-import { makeClient, configured, callFn, isOpen, DAYS, toast, esc, showLoader, hideLoader, GIZMO_SVG } from "./common.js";
+import { makeClient, configured, callFn, isOpen, DAYS, toast, esc, showLoader, hideLoader, gizmoSvg } from "./common.js";
 
 const $ = (id) => document.getElementById(id);
 let settings = null;
 let menu = [];
 
-$("authGizmo").innerHTML = GIZMO_SVG;
+$("authGizmo").innerHTML = gizmoSvg();
 $("guestLink").href = new URL("./", location.href).href;
 $("guestLink").textContent = new URL("./", location.href).href;
 $("qr").src = "qr.png";

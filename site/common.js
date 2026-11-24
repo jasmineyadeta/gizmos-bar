@@ -1,5 +1,5 @@
 import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
-export { showLoader, hideLoader, GIZMO_SVG } from "./gizmo.js";
+export { showLoader, hideLoader, GIZMO_SVG, gizmoSvg } from "./gizmo.js";
 
 const cfg = window.BAR_CONFIG || {};
 export const configured = Boolean(cfg.url && cfg.anonKey);

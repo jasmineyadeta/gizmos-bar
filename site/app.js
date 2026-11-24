@@ -1,12 +1,12 @@
-import { sb, configured, callFn, isOpen, hoursText, toast, esc, showLoader, hideLoader, GIZMO_SVG, sleep } from "./common.js";
+import { sb, configured, callFn, isOpen, hoursText, toast, esc, showLoader, hideLoader, gizmoSvg, sleep } from "./common.js";
 
 const $ = (id) => document.getElementById(id);
 let settings = null;
 let menu = [];
 let picked = null;
 
-$("heroGizmo").innerHTML = GIZMO_SVG;
-$("placedGizmo").innerHTML = GIZMO_SVG;
+$("heroGizmo").innerHTML = gizmoSvg();
+$("placedGizmo").innerHTML = gizmoSvg();
 $("placedGizmo").querySelector("svg").style.cssText = "width:150px;height:171px";
 
 const nameInput = $("name");
