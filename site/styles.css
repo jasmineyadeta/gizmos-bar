@@ -208,3 +208,37 @@ a { color: var(--accent); }
 .howto summary { cursor: pointer; color: var(--accent); font-weight: 600; font-size: 15px; padding: 4px 0; }
 .howto .recipe { margin-top: 6px; font-size: 15px; columns: 1; }
 .howto .recipe li { padding: 4px 0 4px 14px; }
+
+/* ---------- Bigger screens: iPad, phones in landscape ---------- */
+.grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+@media (min-width: 700px) {
+  main { max-width: 980px; padding: 24px 28px 120px; }
+  .hero .gizmo { width: 110px; height: 126px; }
+  .hero h1 { font-size: 40px; }
+  .browse-h { font-size: 26px; }
+  #nameCard { max-width: 560px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+  .circles, .moodrow { margin: 0; padding-left: 0; padding-right: 0; flex-wrap: wrap; overflow: visible; }
+  .circles { gap: 16px; }
+  .circ { width: 84px; } .circ .ring { width: 80px; height: 80px; }
+  /* bottom sheet becomes a centred card */
+  .sheet { left: 50%; right: auto; bottom: 50%; width: min(560px, calc(100% - 48px)); border-radius: 20px; border: 1px solid var(--line);
+           transform: translate(-50%, 60%); opacity: 0; pointer-events: none; transition: transform .25s ease, opacity .2s; max-height: calc(100% - 48px); overflow-y: auto; }
+  .sheet.show { transform: translate(-50%, 50%); opacity: 1; pointer-events: auto; }
+  .sheet-img { height: 260px; }
+  /* admin: two columns where lists get long */
+  .tabs { justify-content: center; }
+  #orders, #menuList, #stockList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  #orders > .card, #menuList > .card { margin: 0; }
+  #stockList .grp-h { grid-column: 1 / -1; margin-bottom: 0; }
+  #stockList .ing { margin: 0; height: 100%; }
+  #orders > .notice { grid-column: 1 / -1; }
+  section[data-panel="menu"] #addForm, section[data-panel="stock"] #ingForm, section[data-panel="hours"] .card, section[data-panel="setup"] .card { max-width: 640px; margin-left: auto; margin-right: auto; }
+  section[data-panel="setup"] > .btn-danger { max-width: 640px; display: block; margin: 0 auto; }
+}
+@media (min-width: 1100px) {
+  main { max-width: 1180px; }
+  #orders, #menuList { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #stockList { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.sheet-img.contain { object-fit: contain; background: #0f1d33; }

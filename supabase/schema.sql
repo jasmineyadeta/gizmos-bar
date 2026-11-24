@@ -428,3 +428,22 @@ begin
     insert into public.seed_log (key) values ('gizmo-recipe-v1');
   end if;
 end $$;
+
+-- Wine by the glass (Jas, 2026-11-24). Bubbly uses the existing sparkling wine stock.
+insert into public.ingredients (key, name, grp, sort) values
+  ('white_wine','White wine','Liqueurs & wine',16), ('red_wine','Red wine','Liqueurs & wine',16), ('rose_wine','Rosé wine','Liqueurs & wine',16)
+on conflict (key) do nothing;
+do $$
+begin
+  if not exists (select 1 from public.seed_log where key = 'wine-by-glass-v1') then
+    insert into public.menu_items (name, category, sort, image, tags, recipe, available)
+    select v.name, 'By the glass', v.sort, v.image, v.tags, v.recipe, true from (values
+      ('Glass of white wine', 101, 'drinks/wine-white.svg', '["light","dry"]'::jsonb, '[{"key":"white_wine","amt":"1 glass","as":"White wine, chilled"}]'::jsonb),
+      ('Glass of red wine',   102, 'drinks/wine-red.svg',   '["warming"]'::jsonb,     '[{"key":"red_wine","amt":"1 glass","as":"Red wine"}]'::jsonb),
+      ('Glass of rosé',       103, 'drinks/wine-rose.svg',  '["fruity","light"]'::jsonb, '[{"key":"rose_wine","amt":"1 glass","as":"Rosé, chilled"}]'::jsonb),
+      ('Glass of bubbly',     104, 'drinks/wine-bubbly.svg','["fizzy","bubbly"]'::jsonb, '[{"key":"sparkling","amt":"1 glass","as":"Sparkling wine, chilled"}]'::jsonb)
+    ) as v(name, sort, image, tags, recipe)
+    where not exists (select 1 from public.menu_items m where m.name = v.name);
+    insert into public.seed_log (key) values ('wine-by-glass-v1');
+  end if;
+end $$;

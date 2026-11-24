@@ -76,8 +76,8 @@ function renderBrowse(open) {
   const moods = MOODS.filter((m) => m.tags.some((t) => usedTags.has(t)));
   $("moods").innerHTML = moods.map((m) =>
     `<button class="chip ${mood === m.key ? "on" : ""}" data-mood="${m.key}">${m.label}</button>`).join("");
-  const ORDER = ["Gin", "Vodka", "Tequila", "Rum", "Whisky", "Wine & Brandy", "Highballs"];
-  const COVER = { Gin: "Dry Martini", Vodka: "Moscow Mule", Tequila: "Margarita", Rum: "Mojito", Whisky: "Old Fashioned", "Wine & Brandy": "Kir Royale" };
+  const ORDER = ["By the glass", "Gin", "Vodka", "Tequila", "Rum", "Whisky", "Wine & Brandy", "Highballs"];
+  const COVER = { "By the glass": "Glass of red wine", Gin: "Dry Martini", Vodka: "Moscow Mule", Tequila: "Margarita", Rum: "Mojito", Whisky: "Old Fashioned", "Wine & Brandy": "Kir Royale" };
   const rank = (c) => (ORDER.indexOf(c) + 1) || 99;
   const spirits = [...new Set(menu.map((d) => d.category))].sort((a, b) => rank(a) - rank(b));
   const cover = (c) => {
@@ -92,9 +92,9 @@ function renderBrowse(open) {
   const list = filtered().sort((a, b) => isOut(a) - isOut(b));
   const avail = list.filter((d) => !isOut(d)).length;
   const moodName = MOODS.find((x) => x.key === mood)?.label.split(" ").slice(1).join(" ").toLowerCase();
-  const kind = spirit && !["Highballs", "Wine & Brandy"].includes(spirit) ? `${spirit.toLowerCase()} ` : "";
+  const kind = spirit && !["Highballs", "Wine & Brandy", "By the glass"].includes(spirit) ? `${spirit.toLowerCase()} ` : "";
   $("count").textContent = list.length
-    ? `${avail} ${kind}drink${avail === 1 ? "" : "s"}${spirit && !kind ? ` in ${spirit}` : ""}${moodName ? ` · ${moodName}` : ""}${!mood && !spirit ? " on the menu" : ""}`
+    ? `${avail} ${kind}drink${avail === 1 ? "" : "s"}${spirit && !kind ? (spirit === "By the glass" ? " by the glass" : ` in ${spirit}`) : ""}${moodName ? ` · ${moodName}` : ""}${!mood && !spirit ? " on the menu" : ""}`
     : "";
   $("surprise").disabled = !open || !avail;
   $("menu").innerHTML = list.map((d) => {
@@ -142,6 +142,7 @@ function openDrink(d, surprise) {
   $("sheetDesc").innerHTML = parts.length > 1
     ? `<ul class="recipe">${parts.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : esc(parts[0] || "");
   $("sheetImg").src = picked.image || PLACEHOLDER;
+  $("sheetImg").classList.toggle("contain", $("sheetImg").src.endsWith(".svg"));
   $("notes").value = "";
   openSheet(true);
 }
