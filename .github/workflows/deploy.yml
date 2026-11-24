@@ -118,6 +118,19 @@ jobs:
           done
           echo "::error::Edge function didn't respond as expected"; exit 1
 
+      - name: Smoke test a real order (rolled back)
+        run: |
+          sql="begin; update public.settings set mode = 'open'; select (public.place_order('Smoke test', (select id from public.menu_items where available order by sort limit 1), '')).item_name as ordered; rollback;"
+          jq -n --arg q "$sql" '{query: $q}' > /tmp/o.json
+          code=$(curl -s -o /tmp/o.out -w '%{http_code}' -X POST "$API/projects/$REF/database/query" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" -H "Content-Type: application/json" --data @/tmp/o.json)
+          echo "place_order -> $code $(cat /tmp/o.out)"
+          echo "Recent edge function errors:"
+          q='select timestamp, event_message from function_logs order by timestamp desc limit 15'
+          curl -s -G "$API/projects/$REF/analytics/endpoints/logs.all" --data-urlencode "sql=$q" \
+            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" | jq -r '.result[]? | "\(.timestamp) \(.event_message)"' | head -40 || true
+          [ "${code:0:1}" = "2" ]
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
