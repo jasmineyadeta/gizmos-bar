@@ -30,6 +30,12 @@ export const GIZMO_SVG = `
   <g class="gz-head">
     <ellipse cx="120" cy="112" rx="52" ry="62" fill="url(#gz-skin)"/>
     <ellipse cx="104" cy="70" rx="20" ry="10" fill="#fff" opacity=".35" transform="rotate(-18 104 70)"/>
+    <!-- captain's hat -->
+    <path d="M62 64 Q56 30 120 20 Q184 30 178 64 Z" fill="#f7f5ef" stroke="#c9c4b6" stroke-width="2"/>
+    <rect x="64" y="50" width="112" height="15" rx="4" fill="#14213d"/>
+    <path d="M70 64 Q120 84 170 64 Q120 72 70 64 Z" fill="#111"/>
+    <circle cx="120" cy="45" r="9" fill="#d4a63a"/>
+    <path d="M120 39 v12 M115 47 q5 6 10 0 M116 41 h8" stroke="#14213d" stroke-width="2" fill="none" stroke-linecap="round"/>
     <!-- white hair around the sides -->
     <path d="M74 88 Q58 104 62 140 Q66 152 76 150 Q70 132 73 114 Q75 100 80 92 Z" fill="#f1f1ee"/>
     <path d="M166 88 Q182 104 178 140 Q174 152 164 150 Q170 132 167 114 Q165 100 160 92 Z" fill="#f1f1ee"/>
@@ -78,7 +84,7 @@ export const GIZMO_SVG = `
   </g>
 
   <!-- shake lines -->
-  <g class="gz-lines" stroke="#f5b041" stroke-width="3" stroke-linecap="round" fill="none">
+  <g class="gz-lines" stroke="#d4a63a" stroke-width="3" stroke-linecap="round" fill="none">
     <path d="M256 140 Q266 156 260 174"/>
     <path d="M178 152 Q170 168 176 186"/>
   </g>

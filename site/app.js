@@ -84,7 +84,7 @@ function renderBrowse(open) {
     const inCat = menu.filter((d) => d.category === c);
     return (inCat.find((d) => d.name === COVER[c] && d.image) || inCat.find((d) => d.image))?.image || PLACEHOLDER;
   };
-  $("spirits").innerHTML = [`<button class="circ ${!spirit ? "on" : ""}" data-spirit=""><span class="ring all">🍸</span>All</button>`]
+  $("spirits").innerHTML = [`<button class="circ ${!spirit ? "on" : ""}" data-spirit=""><span class="ring all">⚓</span>All</button>`]
     .concat(spirits.map((c) => `<button class="circ ${spirit === c ? "on" : ""}" data-spirit="${esc(c)}"><span class="ring"><img src="${esc(cover(c))}" alt=""></span>${esc(c)}</button>`)).join("");
   const sel = $("spirits").querySelector(".on");
   if (sel && spirit) sel.scrollIntoView({ block: "nearest", inline: "nearest" });
