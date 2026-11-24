@@ -83,12 +83,10 @@ jobs:
             echo "Push keys already set."
           fi
 
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
+      # Installed from npm: the setup-cli action looks up "latest" through the GitHub API,
+      # which often fails with "rate limit exceeded" on shared runners.
       - name: Deploy edge function
-        run: supabase functions deploy bar --project-ref "$REF" --no-verify-jwt --use-api --yes
+        run: npx -y supabase@2 functions deploy bar --project-ref "$REF" --no-verify-jwt --use-api --yes
 
       - name: Write site config
         run: |
