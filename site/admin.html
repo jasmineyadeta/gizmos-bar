@@ -34,7 +34,7 @@
       <button data-tab="orders" class="on">Orders <span class="badge hidden" id="badge"></span></button>
       <button data-tab="stock">Stock <span class="badge hidden" id="stockBadge"></span></button>
       <button data-tab="menu">Menu</button>
-      <button data-tab="requests">Ideas <span class="badge hidden" id="ideaBadge"></span></button>
+      <button data-tab="crew">Crew <span class="badge hidden" id="ideaBadge"></span></button>
       <button data-tab="hours">Hours</button>
       <button data-tab="setup">Phone setup</button>
     </nav>
@@ -102,8 +102,14 @@
           <div><label for="tzIn">Time zone</label><select id="tzIn"></select></div>
           <button class="btn" id="saveHours">Save</button>
         </div>
+      </section>
+
+      <section data-panel="crew" class="hidden">
+        <h3 class="sec-h">🧭 Ideas</h3>
+        <p class="small muted">Guest ideas from the suggestion box, most votes first. Mark them Planned or Done, or hide anything you don't want shown.</p>
+        <div id="reqList"></div>
+        <h3 class="sec-h">🏆 Leaderboard</h3>
         <div class="card stack">
-          <h3 style="margin:0">🏆 Crew leaderboard</h3>
           <div class="row"><span class="grow">Show the leaderboard to guests</span>
             <label class="switch"><input type="checkbox" id="showBoard"><span></span></label></div>
           <div>
@@ -115,11 +121,6 @@
           <p class="small muted" style="margin:0">Reset wipes every count and merge.</p>
           <button class="btn-danger" id="resetBoard">Reset leaderboard</button>
         </div>
-      </section>
-
-      <section data-panel="requests" class="hidden">
-        <p class="small muted">Guest ideas from the suggestion box, most votes first. Mark them Planned or Done, or hide anything you don't want shown.</p>
-        <div id="reqList"></div>
       </section>
 
       <section data-panel="setup" class="hidden">

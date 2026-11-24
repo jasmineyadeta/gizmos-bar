@@ -73,8 +73,7 @@ async function startApp() {
 
 function showTab(name) {
   if (!document.querySelector(`[data-panel="${name}"]`)) return;
-  if (name === "hours") loadCrew();
-  if (name === "requests") loadRequests();
+  if (name === "crew") { loadRequests(); loadCrew(); }
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
 }
@@ -451,11 +450,19 @@ async function loadRequests() {
       <div class="row" style="margin-top:10px">
         <div class="seg seg3 grow">${["open", "planned", "done"].map((s) => `<button data-status="${s}" class="${r.status === s ? "on" : ""}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("")}</div>
         <button class="btn-ghost btn-small" data-hide="${r.hidden ? "0" : "1"}">${r.hidden ? "Unhide" : "Hide"}</button>
+        <button class="btn-ghost btn-small del" data-del="1" aria-label="Delete">🗑</button>
       </div>
     </div>`).join("");
 }
 $("reqList").onclick = async (e) => {
   const b = e.target.closest("button"); const card = e.target.closest(".req"); if (!b || !card) return;
+  if (b.dataset.del) {
+    if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Delete?"; b.classList.add("danger"); setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "🗑"; b.classList.remove("danger"); } }, 4000); return; }
+    const { error } = await sb.rpc("delete_request", { p_id: card.dataset.id });
+    if (error) return toast("Couldn't delete.");
+    toast("Idea deleted");
+    return loadRequests();
+  }
   const p = { p_id: card.dataset.id, p_status: null, p_hidden: null };
   if (b.dataset.status) p.p_status = b.dataset.status;
   else if (b.dataset.hide) p.p_hidden = b.dataset.hide === "1";

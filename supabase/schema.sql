@@ -711,3 +711,12 @@ begin
   update public.requests set status = coalesce(p_status, status), hidden = coalesce(p_hidden, hidden) where id = p_id;
 end $$;
 grant execute on function public.set_request(uuid, text, boolean) to anon, authenticated;
+
+-- Owner can delete a suggestion (votes cascade)
+create or replace function public.delete_request(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  delete from public.requests where id = p_id;
+end $$;
+grant execute on function public.delete_request(uuid) to anon, authenticated;
