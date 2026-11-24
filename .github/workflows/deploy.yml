@@ -99,6 +99,25 @@ jobs:
           npx -y qrcode@1.5.4 -o site/qr.png -w 800 -m 2 "$SITE"
           sed -i "s/gizmos-bar-v1/gizmos-bar-${GITHUB_SHA::8}/" site/sw.js
 
+      - name: Smoke test backend
+        run: |
+          anon=$(sed -n 's/.*anonKey: "\([^"]*\)".*/\1/p' site/config.js)
+          base="https://$REF.supabase.co"
+          echo "Settings:"; curl -sf "$base/rest/v1/settings?select=bar_name,mode,timezone" -H "apikey: $anon" | tee /tmp/s.json; echo
+          jq -e 'length == 1' /tmp/s.json > /dev/null
+          echo "Menu items: $(curl -sf "$base/rest/v1/menu_items?select=id" -H "apikey: $anon" | jq length)"
+          echo "Orders hidden from guests: $(curl -s "$base/rest/v1/orders?select=id" -H "apikey: $anon")"
+          curl -sf "$base/rest/v1/app_config?key=eq.vapid_public&select=key" -H "apikey: $anon" | jq -e 'length == 1' > /dev/null
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -s -o /tmp/f.json -w '%{http_code}' -X POST "$base/functions/v1/bar" \
+              -H "apikey: $anon" -H "Content-Type: application/json" \
+              -d '{"action":"order","name":"Smoke test","item_id":"not-a-drink"}')
+            echo "function -> $code $(cat /tmp/f.json)"
+            [ "$code" = "400" ] && grep -q "Pick a drink" /tmp/f.json && exit 0
+            sleep 10
+          done
+          echo "::error::Edge function didn't respond as expected"; exit 1
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
