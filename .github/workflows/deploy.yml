@@ -88,7 +88,7 @@ jobs:
           version: latest
 
       - name: Deploy edge function
-        run: supabase functions deploy bar --project-ref "$REF" --no-verify-jwt --use-api
+        run: supabase functions deploy bar --project-ref "$REF" --no-verify-jwt --use-api --yes
 
       - name: Write site config
         run: |
