@@ -39,36 +39,98 @@ function render() {
   $("closed").classList.toggle("hidden", open);
   $("closedMsg").textContent = settings.closed_message;
 
-  const groups = {};
-  for (const d of menu) (groups[d.category] ||= []).push(d);
-  $("menu").innerHTML = Object.entries(groups).map(([cat, items]) => `
-    <h3 class="cat">${esc(cat)}</h3>
-    ${items.map((d) => {
-      const out = !d.available || d.stock === 0;
-      return `<button class="drink ${out ? "out" : ""}" data-id="${d.id}" ${out || !open ? "disabled" : ""}>
-        ${d.image ? `<img class="thumb" src="${esc(d.image)}" alt="" loading="lazy">` : `<div class="thumb ph">🍸</div>`}
-        <div class="t"><div class="n">${esc(d.name)}</div>${d.description ? `<div class="d">${esc(d.description)}</div>` : ""}</div>
-        <div class="go">${out ? "All out" : open ? "Order" : ""}</div>
-      </button>`;
-    }).join("")}
-  `).join("") || `<p class="muted">Gizmo hasn't stocked the menu yet.</p>`;
+  renderBrowse(open);
 }
 
-$("menu").addEventListener("click", (e) => {
-  const b = e.target.closest(".drink");
-  if (!b || b.disabled) return;
-  if (!nameInput.value.trim()) {
-    toast("Pop your name in first!");
-    nameInput.focus();
-    return;
-  }
-  picked = menu.find((d) => d.id === b.dataset.id);
-  $("sheetName").textContent = picked.name;
+const MOODS = [
+  { key: "fizzy", label: "🫧 Fizzy", tags: ["fizzy"] },
+  { key: "citrusy", label: "🍋 Citrusy", tags: ["citrusy", "tart"] },
+  { key: "strong", label: "🥃 Strong & stirred", tags: ["strong", "stirred"] },
+  { key: "fruity", label: "🍓 Fruity", tags: ["fruity"] },
+  { key: "sweet", label: "🍬 Sweet", tags: ["sweet"] },
+  { key: "warming", label: "🔥 Warming & spicy", tags: ["warming", "spicy"] },
+  { key: "savory", label: "🌶️ Savory", tags: ["savory"] },
+];
+let mood = null;
+let spirit = null;
+const isOut = (d) => !d.available || d.stock === 0;
+
+function filtered() {
+  const m = MOODS.find((x) => x.key === mood);
+  return menu.filter((d) =>
+    (!spirit || d.category === spirit) &&
+    (!m || (d.tags || []).some((t) => m.tags.includes(t))));
+}
+
+function renderBrowse(open) {
+  const usedTags = new Set(menu.flatMap((d) => d.tags || []));
+  const moods = MOODS.filter((m) => m.tags.some((t) => usedTags.has(t)));
+  $("moods").innerHTML = moods.map((m) =>
+    `<button class="chip ${mood === m.key ? "on" : ""}" data-mood="${m.key}">${m.label}</button>`).join("");
+  const ORDER = ["Highballs", "Gin", "Vodka", "Tequila", "Rum", "Whisky", "Wine & Brandy"];
+  const rank = (c) => (ORDER.indexOf(c) + 1) || 99;
+  const spirits = [...new Set(menu.map((d) => d.category))].sort((a, b) => rank(a) - rank(b));
+  $("spirits").innerHTML = [`<button class="chip ${!spirit ? "on" : ""}" data-spirit="">Any spirit</button>`]
+    .concat(spirits.map((c) => `<button class="chip ${spirit === c ? "on" : ""}" data-spirit="${esc(c)}">${esc(c)}</button>`)).join("");
+
+  const list = filtered().sort((a, b) => isOut(a) - isOut(b));
+  const avail = list.filter((d) => !isOut(d)).length;
+  $("count").textContent = list.length
+    ? `${avail} drink${avail === 1 ? "" : "s"} ${mood || spirit ? "match" + (avail === 1 ? "es" : "") : "on the menu"}`
+    : "";
+  $("surprise").disabled = !open || !avail;
+  $("menu").innerHTML = list.map((d) => {
+    const out = isOut(d);
+    return `<button class="tile ${out ? "out" : ""}" data-id="${d.id}" ${out || !open ? "disabled" : ""}>
+      ${d.image ? `<img src="${esc(d.image)}" alt="" loading="lazy">` : `<div class="ph">🍸</div>`}
+      ${out ? `<span class="badge-out">All out</span>` : ""}
+      <b>${esc(d.name)}</b>
+    </button>`;
+  }).join("") || `<p class="muted empty">Nothing matches. Try another mood, or let Gizmo surprise you.</p>`;
+}
+
+$("moods").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-mood]"); if (!b) return;
+  mood = mood === b.dataset.mood ? null : b.dataset.mood;
+  renderBrowse(isOpen(settings));
+});
+$("spirits").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-spirit]"); if (!b) return;
+  spirit = b.dataset.spirit || null;
+  renderBrowse(isOpen(settings));
+});
+
+function needName() {
+  if (nameInput.value.trim()) return false;
+  toast("Pop your name in first!");
+  nameInput.focus();
+  return true;
+}
+
+$("surprise").onclick = async () => {
+  if (needName()) return;
+  const pool = filtered().filter((d) => !isOut(d));
+  if (!pool.length) return;
+  showLoader("Gizmo's picking for you...");
+  await sleep(1400);
+  hideLoader();
+  openDrink(pool[Math.floor(Math.random() * pool.length)], true);
+};
+
+function openDrink(d, surprise) {
+  picked = d;
+  $("sheetName").textContent = (surprise ? "🎲 " : "") + picked.name;
   $("sheetDesc").textContent = picked.description;
   $("sheetImg").src = picked.image || "";
   $("sheetImg").classList.toggle("hidden", !picked.image);
   $("notes").value = "";
   openSheet(true);
+}
+
+$("menu").addEventListener("click", (e) => {
+  const b = e.target.closest(".tile");
+  if (!b || b.disabled || needName()) return;
+  openDrink(menu.find((d) => d.id === b.dataset.id));
 });
 
 function openSheet(on) {
@@ -99,8 +161,8 @@ function showPlaced(name, drink, id) {
   $("placedTitle").textContent = "Gizmo's on it!";
   $("placedText").textContent = `${drink} for ${name}. We'll let you know here when it's ready.`;
   $("placed").classList.remove("hidden");
-  $("menu").classList.add("hidden");
   $("nameCard").classList.add("hidden");
+  $("browse").classList.add("hidden");
   window.scrollTo({ top: 0, behavior: "smooth" });
   clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
@@ -117,8 +179,8 @@ function showPlaced(name, drink, id) {
 $("again").onclick = () => {
   clearInterval(pollTimer);
   $("placed").classList.add("hidden");
-  $("menu").classList.remove("hidden");
   $("nameCard").classList.remove("hidden");
+  $("browse").classList.remove("hidden");
   load();
 };
 
