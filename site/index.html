@@ -60,6 +60,19 @@
       <p class="small muted" style="margin:0 0 12px">Most drinks ordered, all time. Gizmo keeps count.</p>
       <ol id="boardList"></ol>
     </section>
+
+    <section id="ideas" class="card ideas">
+      <h2>🧭 Suggestion box</h2>
+      <p class="small muted" style="margin:0 0 12px">Got an idea for the bar or a drink Gizmo should add? Drop it here and give others a 👍.</p>
+      <form id="ideaForm" class="stack">
+        <div class="seg" id="ideaKind"><button type="button" data-k="drink" class="on">🍹 A drink</button><button type="button" data-k="feature">💡 An idea</button></div>
+        <div class="row" style="flex-wrap:nowrap">
+          <input class="grow" id="ideaText" maxlength="200" placeholder="e.g. Add an espresso martini" aria-label="Your suggestion">
+          <button class="btn" id="ideaSend">Post</button>
+        </div>
+      </form>
+      <ul id="ideaList"></ul>
+    </section>
   </main>
 
   <div class="sheet-bg" id="sheetBg"></div>

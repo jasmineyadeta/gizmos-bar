@@ -34,6 +34,7 @@
       <button data-tab="orders" class="on">Orders <span class="badge hidden" id="badge"></span></button>
       <button data-tab="stock">Stock <span class="badge hidden" id="stockBadge"></span></button>
       <button data-tab="menu">Menu</button>
+      <button data-tab="requests">Ideas <span class="badge hidden" id="ideaBadge"></span></button>
       <button data-tab="hours">Hours</button>
       <button data-tab="setup">Phone setup</button>
     </nav>
@@ -114,6 +115,11 @@
           <p class="small muted" style="margin:0">Reset wipes every count and merge.</p>
           <button class="btn-danger" id="resetBoard">Reset leaderboard</button>
         </div>
+      </section>
+
+      <section data-panel="requests" class="hidden">
+        <p class="small muted">Guest ideas from the suggestion box, most votes first. Mark them Planned or Done, or hide anything you don't want shown.</p>
+        <div id="reqList"></div>
       </section>
 
       <section data-panel="setup" class="hidden">

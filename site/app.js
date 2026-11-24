@@ -46,7 +46,55 @@ function render() {
   $("board").classList.toggle("hidden", settings.show_board === false);
   $("boardLink").classList.toggle("hidden", settings.show_board === false);
   if (settings.show_board !== false) loadBoard();
+  loadIdeas();
 }
+
+// ---------- Suggestion box ----------
+// No accounts: each phone gets a random id so it can vote once per idea.
+const voter = (() => {
+  try {
+    let v = localStorage.getItem("voterId");
+    if (!v) { v = crypto.randomUUID(); localStorage.setItem("voterId", v); }
+    return v;
+  } catch { return crypto.randomUUID(); }
+})();
+let ideaKind = "drink";
+const STATUS = { planned: "⚓ Planned", done: "✅ Done" };
+async function loadIdeas() {
+  const { data, error } = await sb.rpc("request_board", { p_voter: voter });
+  if (error) return;
+  $("ideaList").innerHTML = (data || []).map((r) => `
+    <li class="idea ${r.status}">
+      <button class="vote ${r.mine ? "on" : ""}" data-vote="${r.id}" aria-pressed="${r.mine}" aria-label="Thumbs up">👍<b>${r.votes}</b></button>
+      <div class="t"><span class="k">${r.kind === "drink" ? "🍹" : "💡"}</span> ${esc(r.body)}
+        <small>${r.author ? `from ${esc(r.author)}` : ""}${STATUS[r.status] ? ` <span class="st">${STATUS[r.status]}</span>` : ""}</small></div>
+    </li>`).join("") || `<li class="empty-board">No suggestions yet. Be the first!</li>`;
+}
+$("ideaKind").onclick = (e) => {
+  const b = e.target.closest("[data-k]"); if (!b) return;
+  ideaKind = b.dataset.k;
+  document.querySelectorAll("#ideaKind button").forEach((x) => x.classList.toggle("on", x === b));
+  $("ideaText").placeholder = ideaKind === "drink" ? "e.g. Add an espresso martini" : "e.g. Let me save my favourite drink";
+};
+$("ideaForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const body = $("ideaText").value.trim();
+  if (body.length < 3) return toast("Type a few more words first.");
+  $("ideaSend").disabled = true;
+  const { error } = await sb.rpc("add_request", { p_body: body, p_kind: ideaKind, p_author: nameInput.value.trim(), p_voter: voter });
+  $("ideaSend").disabled = false;
+  if (error) return toast(error.message.includes("TOO_MANY") ? "That's plenty of ideas for today. Thanks!" : "Couldn't post that. Try again?");
+  $("ideaText").value = "";
+  toast("Thanks! Posted to the suggestion box.");
+  loadIdeas();
+};
+$("ideaList").onclick = async (e) => {
+  const b = e.target.closest("[data-vote]"); if (!b) return;
+  b.disabled = true;
+  const { error } = await sb.rpc("toggle_vote", { p_id: b.dataset.vote, p_voter: voter });
+  if (error) { b.disabled = false; return toast("Couldn't save your vote."); }
+  loadIdeas();
+};
 
 // ---------- Crew leaderboard ----------
 const RANKS = ["🧑‍✈️ Captain", "⚓ First Mate", "🪢 Bosun"];

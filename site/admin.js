@@ -62,6 +62,7 @@ async function startApp() {
   await Promise.all([loadSettings(), loadMenu()]);
   await loadOrders();
   renderStock();
+  loadRequests();
   hideLoader();
   $("appView").classList.remove("hidden");
   refreshPushState();
@@ -73,6 +74,7 @@ async function startApp() {
 function showTab(name) {
   if (!document.querySelector(`[data-panel="${name}"]`)) return;
   if (name === "hours") loadCrew();
+  if (name === "requests") loadRequests();
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
 }
@@ -433,6 +435,35 @@ $("showBoard").onchange = async () => {
   if (error) return toast("Couldn't save.");
   settings.show_board = v;
   toast(v ? "Leaderboard is showing" : "Leaderboard hidden from guests");
+};
+const ADMIN_VOTER = "00000000-0000-0000-0000-000000000000";
+async function loadRequests() {
+  const { data, error } = await sb.rpc("request_board", { p_voter: ADMIN_VOTER, p_all: true });
+  if (error) { $("reqList").innerHTML = `<p class="muted">Couldn't load ideas.</p>`; return; }
+  const list = data || [];
+  const fresh = list.filter((r) => r.status === "open" && !r.hidden).length;
+  $("ideaBadge").textContent = fresh; $("ideaBadge").classList.toggle("hidden", !fresh);
+  if (!list.length) { $("reqList").innerHTML = `<div class="card"><p class="muted" style="margin:0">No ideas yet. Guests can post them from the bottom of the menu.</p></div>`; return; }
+  $("reqList").innerHTML = list.map((r) => `
+    <div class="card req${r.hidden ? " is-hidden" : ""}" data-id="${r.id}">
+      <div class="row"><span class="votes">👍 ${r.votes}</span>
+        <span class="grow"><b>${esc(r.body)}</b><br><span class="small muted">${r.kind === "drink" ? "🍸 Drink" : "💡 Feature"}${r.author ? " · " + esc(r.author) : ""}${r.hidden ? " · hidden" : ""}</span></span></div>
+      <div class="row" style="margin-top:10px">
+        <div class="seg seg3 grow">${["open", "planned", "done"].map((s) => `<button data-status="${s}" class="${r.status === s ? "on" : ""}">${s[0].toUpperCase() + s.slice(1)}</button>`).join("")}</div>
+        <button class="btn-ghost btn-small" data-hide="${r.hidden ? "0" : "1"}">${r.hidden ? "Unhide" : "Hide"}</button>
+      </div>
+    </div>`).join("");
+}
+$("reqList").onclick = async (e) => {
+  const b = e.target.closest("button"); const card = e.target.closest(".req"); if (!b || !card) return;
+  const p = { p_id: card.dataset.id, p_status: null, p_hidden: null };
+  if (b.dataset.status) p.p_status = b.dataset.status;
+  else if (b.dataset.hide) p.p_hidden = b.dataset.hide === "1";
+  else return;
+  const { error } = await sb.rpc("set_request", p);
+  if (error) return toast("Couldn't save.");
+  toast(b.dataset.status ? `Marked ${b.dataset.status}` : (p.p_hidden ? "Hidden from guests" : "Showing to guests again"));
+  loadRequests();
 };
 let crew = [];
 async function loadCrew() {

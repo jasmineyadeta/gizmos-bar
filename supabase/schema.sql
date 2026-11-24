@@ -636,3 +636,78 @@ begin
   delete from public.name_aliases;
 end $$;
 grant execute on function public.reset_leaderboard() to anon, authenticated;
+
+-- Suggestion box (Jas, 2026-11-24): guests suggest features or drinks and thumbs-up others.
+-- No accounts, so a "voter" is a random id each phone keeps; one vote per phone per idea.
+create table if not exists public.requests (
+  id uuid primary key default gen_random_uuid(),
+  body text not null check (char_length(body) between 3 and 200),
+  kind text not null default 'feature' check (kind in ('feature', 'drink')),
+  author text not null default '' check (char_length(author) <= 40),
+  voter text not null,
+  status text not null default 'open' check (status in ('open', 'planned', 'done')),
+  hidden boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.request_votes (
+  request_id uuid not null references public.requests on delete cascade,
+  voter text not null,
+  created_at timestamptz not null default now(),
+  primary key (request_id, voter)
+);
+alter table public.requests enable row level security;
+alter table public.request_votes enable row level security;
+
+create or replace function public.request_board(p_voter text, p_all boolean default false)
+returns table (id uuid, body text, kind text, author text, status text, hidden boolean, votes bigint, mine boolean, created_at timestamptz)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if p_all and not public.is_owner() then raise exception 'not allowed'; end if;
+  return query
+    select r.id, r.body, r.kind, r.author, r.status, r.hidden,
+           (select count(*) from public.request_votes v where v.request_id = r.id),
+           exists (select 1 from public.request_votes v where v.request_id = r.id and v.voter = p_voter),
+           r.created_at
+      from public.requests r
+     where p_all or not r.hidden
+     order by (r.status = 'done'), 7 desc, r.created_at desc
+     limit 100;
+end $$;
+grant execute on function public.request_board(text, boolean) to anon, authenticated;
+
+create or replace function public.add_request(p_body text, p_kind text, p_author text, p_voter text)
+returns uuid
+language plpgsql security definer set search_path = public as $$
+declare new_id uuid;
+begin
+  if coalesce(p_voter, '') !~ '^[0-9a-f-]{36}$' then raise exception 'BAD_VOTER'; end if;
+  if (select count(*) from public.requests where voter = p_voter and created_at > now() - interval '1 day') >= 5 then
+    raise exception 'TOO_MANY';
+  end if;
+  insert into public.requests (body, kind, author, voter)
+    values (left(trim(p_body), 200), case when p_kind = 'drink' then 'drink' else 'feature' end, left(trim(coalesce(p_author, '')), 40), p_voter)
+    returning id into new_id;
+  insert into public.request_votes (request_id, voter) values (new_id, p_voter);
+  return new_id;
+end $$;
+grant execute on function public.add_request(text, text, text, text) to anon, authenticated;
+
+create or replace function public.toggle_vote(p_id uuid, p_voter text) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(p_voter, '') !~ '^[0-9a-f-]{36}$' then raise exception 'BAD_VOTER'; end if;
+  delete from public.request_votes where request_id = p_id and voter = p_voter;
+  if found then return false; end if;
+  insert into public.request_votes (request_id, voter)
+    select p_id, p_voter where exists (select 1 from public.requests where id = p_id and not hidden);
+  return true;
+end $$;
+grant execute on function public.toggle_vote(uuid, text) to anon, authenticated;
+
+create or replace function public.set_request(p_id uuid, p_status text, p_hidden boolean) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  update public.requests set status = coalesce(p_status, status), hidden = coalesce(p_hidden, hidden) where id = p_id;
+end $$;
+grant execute on function public.set_request(uuid, text, boolean) to anon, authenticated;
