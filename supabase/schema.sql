@@ -559,7 +559,7 @@ grant execute on function public.reset_leaderboard() to anon, authenticated;
 do $$
 begin
   if not exists (select 1 from public.seed_log where key = 'tallies-exact-v1') then
-    update public.tallies set name_key = public.name_key(display), display = public.name_key(display);
+    update public.tallies set name_key = public.name_key(display), display = public.name_key(display) where true;
     insert into public.seed_log (key) values ('tallies-exact-v1');
   end if;
 end $$;

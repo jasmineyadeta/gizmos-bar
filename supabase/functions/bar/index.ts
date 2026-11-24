@@ -45,7 +45,7 @@ async function pushAll(payload: Record<string, unknown>) {
 }
 
 const friendly: Record<string, string> = {
-  BAR_CLOSED: "Sorry, the bar just closed.",
+  BAR_CLOSED: "The bar just closed. Gizmo's probably napping 😴",
   SOLD_OUT: "Ah, that one just ran out. Pick another?",
   NO_SUCH_DRINK: "That drink is no longer on the menu.",
 };

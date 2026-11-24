@@ -22,7 +22,7 @@ async function load(first) {
     sb.from("menu_items").select("*").order("sort").order("name"),
     sb.from("ingredients").select("key, name, in_stock, top_shelf"),
   ]);
-  if (first) await sleep(Math.max(0, 1200 - (Date.now() - started)));
+  if (first) await sleep(Math.max(0, 2200 - (Date.now() - started)));
   hideLoader();
   if (s.error || m.error) { toast("Couldn't reach the bar. Pull down to retry."); return; }
   settings = s.data;
@@ -164,10 +164,11 @@ function renderBrowse(open) {
   $("count").textContent = list.length
     ? `${avail} ${kind}drink${avail === 1 ? "" : "s"}${spirit && !kind ? (spirit === "By the glass" ? " by the glass" : ` in ${spirit}`) : ""}${moodName ? ` · ${moodName}` : ""}${!mood && !spirit ? " on the menu" : ""}`
     : "";
-  $("surprise").disabled = !open || !avail;
+  $("surprise").disabled = !avail;
+  $("surprise").classList.toggle("shut", !open);
   $("menu").innerHTML = list.map((d) => {
     const out = isOut(d);
-    return `<button class="tile ${out ? "out" : ""}" data-id="${d.id}" ${out || !open ? "disabled" : ""}>
+    return `<button class="tile ${out ? "out" : ""} ${open ? "" : "shut"}" data-id="${d.id}" ${out ? "disabled" : ""}>
       <img src="${esc(d.image || PLACEHOLDER)}" alt="" loading="lazy">
       ${out ? `<span class="badge-out">${esc(outLabel(d))}</span>` : ""}
       <b>${esc(d.name)}</b>
@@ -193,12 +194,19 @@ function needName() {
   return true;
 }
 
+const NAP = "The bar's closed right now. Gizmo's probably napping 😴";
+function barShut() {
+  if (isOpen(settings)) return false;
+  toast(NAP);
+  return true;
+}
+
 $("surprise").onclick = async () => {
-  if (needName()) return;
+  if (barShut() || needName()) return;
   const pool = filtered().filter((d) => !isOut(d));
   if (!pool.length) return;
   showLoader("Gizmo's picking for you...");
-  await sleep(1400);
+  await sleep(2400);
   hideLoader();
   openDrink(pool[Math.floor(Math.random() * pool.length)], true);
 };
@@ -221,7 +229,7 @@ function openDrink(d, surprise) {
 
 $("menu").addEventListener("click", (e) => {
   const b = e.target.closest(".tile");
-  if (!b || b.disabled || needName()) return;
+  if (!b || b.disabled || barShut() || needName()) return;
   openDrink(menu.find((d) => d.id === b.dataset.id));
 });
 
@@ -232,13 +240,14 @@ function openSheet(on) {
 $("sheetBg").onclick = $("cancelBtn").onclick = () => openSheet(false);
 
 $("orderBtn").onclick = async () => {
+  if (barShut()) return openSheet(false);
   const name = nameInput.value.trim();
   openSheet(false);
   showLoader("Sending to Gizmo...");
   const started = Date.now();
   try {
     const { id } = await callFn({ action: "order", name, item_id: picked.id, notes: $("notes").value, top_shelf: $("topChk").checked && !$("topOpt").classList.contains("hidden") });
-    await sleep(Math.max(0, 1800 - (Date.now() - started)));
+    await sleep(Math.max(0, 2800 - (Date.now() - started)));
     hideLoader();
     showPlaced(name, picked.name, id);
   } catch (err) {
