@@ -485,7 +485,26 @@ async function loadCrew() {
   $("merges").innerHTML = merged.length ? `<label>Merged</label>` + merged.map((c) => `
     <div class="merged"><span><b>${esc(c.name)}</b> → ${esc(c.merged_into)} <span class="muted small">(${c.drinks})</span></span>
       <button class="btn-ghost btn-small" data-unmerge="${esc(c.name)}">Unmerge</button></div>`).join("") : "";
+  const total = (n) => crew.filter((c) => c.name === n || c.merged_into === n).reduce((a, c) => a + Number(c.drinks), 0);
+  const people = loose.map((c) => ({ ...c, total: total(c.name) })).sort((a, b) => a.hidden - b.hidden || b.total - a.total);
+  $("crewList").innerHTML = people.length ? `<label>People on the board</label>` + people.map((c) => `
+    <div class="merged${c.hidden ? " is-hidden" : ""}"><span><b>${esc(c.name)}</b> <span class="muted small">(${c.total})${c.hidden ? " · removed" : ""}</span></span>
+      ${c.hidden ? `<button class="btn-ghost btn-small" data-restore="${esc(c.name)}">Restore</button>`
+                 : `<button class="btn-ghost btn-small" data-remove="${esc(c.name)}">Remove</button>`}</div>`).join("") : "";
 }
+$("crewList").onclick = async (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const name = b.dataset.remove || b.dataset.restore; if (!name) return;
+  if (b.dataset.remove && b.dataset.confirm !== "1") {
+    b.dataset.confirm = "1"; b.textContent = "Remove?"; b.classList.add("danger");
+    setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ""; b.textContent = "Remove"; b.classList.remove("danger"); } }, 4000);
+    return;
+  }
+  const { error } = await sb.rpc("hide_from_board", { p_name: name, p_hidden: !!b.dataset.remove });
+  if (error) return toast("Couldn't save.");
+  toast(b.dataset.remove ? `${name} is off the leaderboard` : `${name} is back on the leaderboard`);
+  loadCrew();
+};
 $("mergeBtn").onclick = async () => {
   const f = $("mergeFrom").value, t = $("mergeInto").value;
   if (!f || !t) return toast("Pick both names first.");

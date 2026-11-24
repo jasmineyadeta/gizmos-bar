@@ -299,3 +299,5 @@ a { color: var(--accent); }
 .sec-h { margin: 18px 0 8px; font-family: "Playfair Display", serif; }
 .sec-h:first-child { margin-top: 0; }
 .req .del.danger { color: #ffb4a8; border-color: #ffb4a8; }
+#crewList .merged.is-hidden b { opacity: .55; }
+#crewList .danger { color: #ffb4a8; border-color: #ffb4a8; }

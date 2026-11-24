@@ -720,3 +720,61 @@ begin
   delete from public.requests where id = p_id;
 end $$;
 grant execute on function public.delete_request(uuid) to anon, authenticated;
+
+-- Leaderboard: owner can remove a name from the board (restorable; orders are kept).
+create table if not exists public.board_hidden (
+  name text primary key,
+  created_at timestamptz not null default now()
+);
+alter table public.board_hidden enable row level security;
+
+create or replace function public.leaderboard(p_scope text)
+returns table (name text, drinks bigint)
+language sql stable security definer set search_path = public as $$
+  select coalesce(a.canonical, t.name_key), count(*)
+    from public.tallies t
+    left join public.name_aliases a on a.alias = t.name_key
+   where (select show_board from public.settings where id = 1)
+     and coalesce(a.canonical, t.name_key) not in (select h.name from public.board_hidden h)
+   group by coalesce(a.canonical, t.name_key)
+   order by count(*) desc, max(t.created_at) asc
+   limit 10
+$$;
+grant execute on function public.leaderboard(text) to anon, authenticated;
+
+drop function if exists public.crew_names();
+create or replace function public.crew_names()
+returns table (name text, drinks bigint, merged_into text, hidden boolean)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  return query
+    select n.k, coalesce(c.cnt, 0), a.canonical, exists (select 1 from public.board_hidden h where h.name = n.k)
+      from (select name_key as k from public.tallies union select alias from public.name_aliases
+            union select canonical from public.name_aliases union select b.name from public.board_hidden b) n
+      left join (select name_key, count(*) cnt from public.tallies group by name_key) c on c.name_key = n.k
+      left join public.name_aliases a on a.alias = n.k
+     order by lower(n.k), n.k;
+end $$;
+grant execute on function public.crew_names() to anon, authenticated;
+
+create or replace function public.hide_from_board(p_name text, p_hidden boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare k text := public.name_key(p_name);
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  k := coalesce((select canonical from public.name_aliases where alias = k), k);
+  if p_hidden then insert into public.board_hidden (name) values (k) on conflict do nothing;
+  else delete from public.board_hidden where name = k; end if;
+end $$;
+grant execute on function public.hide_from_board(text, boolean) to anon, authenticated;
+
+create or replace function public.reset_leaderboard() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  delete from public.tallies;
+  delete from public.name_aliases;
+  delete from public.board_hidden;
+end $$;
+grant execute on function public.reset_leaderboard() to anon, authenticated;
