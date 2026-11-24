@@ -235,3 +235,43 @@ grant select, insert, update, delete on public.menu_items, public.orders, public
 drop policy if exists "push owner" on public.push_subscriptions;
 create policy "push owner" on public.push_subscriptions for all
   using (public.is_owner()) with check (public.is_owner());
+
+-- Gizmo's real menu (from his printed cocktail list) --------------------------
+alter table public.menu_items add column if not exists image text;
+-- tags are inferred by Claude (flavour/strength), not from Gizmo's list.
+alter table public.menu_items add column if not exists tags jsonb not null default '[]'::jsonb;
+create table if not exists public.seed_log (key text primary key, at timestamptz not null default now());
+alter table public.seed_log enable row level security;
+revoke all on public.seed_log from anon, authenticated;
+
+do $$
+begin
+  if not exists (select 1 from public.seed_log where key = 'gizmo-menu-v1') then
+    -- remove the placeholder starter drinks
+    delete from public.menu_items where name in
+      ('Old Fashioned','Margarita','Gin & Tonic','Cold Beer','Glass of Wine','Shirley Temple')
+      and image is null;
+    insert into public.menu_items (name, description, category, sort, image, tags) values
+  ('Gin & Tonic / Bacardi & Coke etc.', '1 ounce spirit · 3 ounces mixer · slice of lemon', 'Highballs', 1, 'drinks/gin-tonic.jpg', '["fizzy", "light"]'::jsonb),
+  ('Dry Martini', '2 ounces gin · 1/2 ounce dry vermouth · 1 dash angostura bitters · lemon twist', 'Gin', 2, 'drinks/dry-martini.jpg', '["strong", "dry", "stirred"]'::jsonb),
+  ('Tom Collins', '2 ounces dry gin · 1 ounce lemon juice · 1/2 ounce simple syrup · Club soda, to top · lemon slice & maraschino cherry', 'Gin', 3, 'drinks/tom-collins.jpg', '["fizzy", "citrusy", "light"]'::jsonb),
+  ('Martinez', '1 ounce gin · 1 ounce sweet vermouth · 3 dash augostura bitters · 1 teaspoon maraschino juice · lemon twist', 'Gin', 4, 'drinks/martinez.jpg', '["strong", "sweet", "stirred"]'::jsonb),
+  ('Negroni', '1 ounce gin · 1 ounce campari · 1 ounce sweet vermouth · orange peel', 'Gin', 5, 'drinks/negroni.jpg', '["strong", "bitter", "stirred"]'::jsonb),
+  ('French 75', '1 ounce gin · 1/2 ounce lemon juice · 1/2 ounce simple syrup · 3 ounces sparkling wine · lemon twist', 'Gin', 6, 'drinks/french-75.jpg', '["fizzy", "citrusy", "bubbly"]'::jsonb),
+  ('Kir Royale', '1/2 ounce creme de cassis · sparkling wine, to top', 'Wine & Brandy', 7, 'drinks/kir-royale.jpg', '["fizzy", "fruity", "light", "bubbly"]'::jsonb),
+  ('Cosmopolitan', '1 1/2 ounces vodka · 3/4 ounce triple sec · 3/4 ounce lime juice · 1/2 ounce cranberry juice · lime wedge', 'Vodka', 8, 'drinks/cosmopolitan.jpg', '["fruity", "citrusy"]'::jsonb),
+  ('Moscow Mule', '2 ounces vodka · 1/2 ounce lime juice · 3 ounces ginger beer · lime slice', 'Vodka', 9, 'drinks/moscow-mule.jpg', '["fizzy", "spicy", "citrusy"]'::jsonb),
+  ('Caesar', '2 ounces vodka · 4 ounces Clamato juice · Dash of Tabasco and/or Worcestershire sauce (to taste) · Garnish: lime or lemon slice · celery stalk/parsley sprig (optional)', 'Vodka', 10, 'drinks/caesar.jpg', '["savory", "spicy"]'::jsonb),
+  ('Screwdriver', '1 1/2 ounces vodka · Orange juice', 'Vodka', 11, 'drinks/screwdriver.jpg', '["fruity", "light"]'::jsonb),
+  ('Tequila Sunrise', '2 ounces tequila · 4 ounces orange juice · 1/4 ounce grenadine · orange slice and cherry', 'Tequila', 12, 'drinks/tequila-sunrise.jpg', '["fruity", "sweet"]'::jsonb),
+  ('Margarita', '1 1/2 ounces tequila · 1/2 ounce triple sec · 1 ounce lime juice · lime slice · salt (optional)', 'Tequila', 13, 'drinks/margarita.jpg', '["citrusy", "tart"]'::jsonb),
+  ('Mojito', '3 mint leaves · 1/2 ounce simple syrup · 2 ounces white rum · 3/4 ounce lime juice · Club soda, to top · mint sprig and lime slice', 'Rum', 14, 'drinks/mojito.jpg', '["fizzy", "minty", "citrusy"]'::jsonb),
+  ('Hurricane', '1 ounce light rum · 1 ounce dark rum · 1 ounce navy-strength rum · 1/2 ounce simple syrup · 1/2 ounce passion fruit puree or pineapple juice · 1 ounce orange juice · 1 ounce lime juice · 1/2 teaspoon grenadine · orange slice and cherry', 'Rum', 15, 'drinks/hurricane.jpg', '["strong", "fruity", "sweet"]'::jsonb),
+  ('Daiquiri', '2 ounces light rum · 1 ounce lime juice · 3/4 ounce demerara sugar syrup · lime twist', 'Rum', 16, 'drinks/daiquiri.jpg', '["citrusy", "tart"]'::jsonb),
+  ('Manhattan', '2 ounces rye whiskey · 1 ounce sweet vermouth · 2 dashes angostura bitters · brandied cherry or lemon slice', 'Whisky', 17, 'drinks/manhattan.jpg', '["strong", "stirred"]'::jsonb),
+  ('Old Fashioned', '1 teaspoon sugar · 3 dashes angostura bitters · 1 teaspoon water · 2 ounces bourbon or rye whiskey · orange twist', 'Whisky', 18, 'drinks/old-fashioned.jpg', '["strong", "stirred"]'::jsonb),
+  ('Whisky Mac', '1 1/2 ounces blended scotch · 1 ounce Stone’s Original green ginger wine', 'Whisky', 19, 'drinks/whisky-mac.jpg', '["strong", "spicy", "warming"]'::jsonb),
+  ('Brandy Sangaree', '1/2 teaspoon sugar · 1 teaspoon water · 2 ounces brandy · 1 ounce port wine · grated nutmeg', 'Wine & Brandy', 20, 'drinks/brandy-sangaree.jpg', '["strong", "warming", "sweet"]'::jsonb);
+    insert into public.seed_log (key) values ('gizmo-menu-v1');
+  end if;
+end $$;

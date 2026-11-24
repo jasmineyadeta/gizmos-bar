@@ -118,7 +118,7 @@ function setOwnerStatus() {
 
 // ---------- Menu ----------
 async function loadMenu() {
-  const { data } = await sb.from("menu_items").select("*").order("category").order("sort").order("name");
+  const { data } = await sb.from("menu_items").select("*").order("sort").order("name");
   menu = data || [];
   $("cats").innerHTML = [...new Set(menu.map((d) => d.category))].map((c) => `<option value="${esc(c)}">`).join("");
   $("menuList").innerHTML = menu.map((d) => `

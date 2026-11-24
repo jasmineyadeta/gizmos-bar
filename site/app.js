@@ -19,7 +19,7 @@ async function load(first) {
   const started = Date.now();
   const [s, m] = await Promise.all([
     sb.from("settings").select("*").eq("id", 1).single(),
-    sb.from("menu_items").select("*").order("category").order("sort").order("name"),
+    sb.from("menu_items").select("*").order("sort").order("name"),
   ]);
   if (first) await sleep(Math.max(0, 1200 - (Date.now() - started)));
   hideLoader();
@@ -46,6 +46,7 @@ function render() {
     ${items.map((d) => {
       const out = !d.available || d.stock === 0;
       return `<button class="drink ${out ? "out" : ""}" data-id="${d.id}" ${out || !open ? "disabled" : ""}>
+        ${d.image ? `<img class="thumb" src="${esc(d.image)}" alt="" loading="lazy">` : `<div class="thumb ph">🍸</div>`}
         <div class="t"><div class="n">${esc(d.name)}</div>${d.description ? `<div class="d">${esc(d.description)}</div>` : ""}</div>
         <div class="go">${out ? "All out" : open ? "Order" : ""}</div>
       </button>`;
@@ -64,6 +65,8 @@ $("menu").addEventListener("click", (e) => {
   picked = menu.find((d) => d.id === b.dataset.id);
   $("sheetName").textContent = picked.name;
   $("sheetDesc").textContent = picked.description;
+  $("sheetImg").src = picked.image || "";
+  $("sheetImg").classList.toggle("hidden", !picked.image);
   $("notes").value = "";
   openSheet(true);
 });
