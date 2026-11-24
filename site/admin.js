@@ -72,6 +72,7 @@ async function startApp() {
 
 function showTab(name) {
   if (!document.querySelector(`[data-panel="${name}"]`)) return;
+  if (name === "hours") loadCrew();
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
   document.querySelectorAll("[data-panel]").forEach((p) => p.classList.toggle("hidden", p.dataset.panel !== name));
 }
@@ -433,12 +434,43 @@ $("showBoard").onchange = async () => {
   settings.show_board = v;
   toast(v ? "Leaderboard is showing" : "Leaderboard hidden from guests");
 };
+let crew = [];
+async function loadCrew() {
+  const { data, error } = await sb.rpc("crew_names");
+  if (error) return;
+  crew = data || [];
+  const opts = (list) => list.map((c) => `<option value="${esc(c.name)}">${esc(c.name)} (${c.drinks})</option>`).join("");
+  const loose = crew.filter((c) => !c.merged_into);
+  $("mergeFrom").innerHTML = `<option value="">Pick a name</option>` + opts(loose);
+  $("mergeInto").innerHTML = `<option value="">Pick a name</option>` + opts(loose);
+  const merged = crew.filter((c) => c.merged_into);
+  $("merges").innerHTML = merged.length ? `<label>Merged</label>` + merged.map((c) => `
+    <div class="merged"><span><b>${esc(c.name)}</b> → ${esc(c.merged_into)} <span class="muted small">(${c.drinks})</span></span>
+      <button class="btn-ghost btn-small" data-unmerge="${esc(c.name)}">Unmerge</button></div>`).join("") : "";
+}
+$("mergeBtn").onclick = async () => {
+  const f = $("mergeFrom").value, t = $("mergeInto").value;
+  if (!f || !t) return toast("Pick both names first.");
+  if (f === t) return toast("Pick two different names.");
+  const { error } = await sb.rpc("merge_names", { p_from: f, p_into: t });
+  if (error) return toast("Couldn't merge.");
+  toast(`${f} now counts as ${t}`);
+  loadCrew();
+};
+$("merges").onclick = async (e) => {
+  const n = e.target.dataset.unmerge; if (!n) return;
+  const { error } = await sb.rpc("unmerge_name", { p_alias: n });
+  if (error) return toast("Couldn't unmerge.");
+  toast(`${n} counts separately again`);
+  loadCrew();
+};
 $("resetBoard").onclick = async () => {
   const b = $("resetBoard");
   if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Tap again to wipe all counts"; return; }
   const { error } = await sb.rpc("reset_leaderboard");
   b.dataset.confirm = ""; b.textContent = "Reset leaderboard";
   toast(error ? "Couldn't reset." : "Leaderboard wiped. Fresh start!");
+  loadCrew();
 };
 $("mode").onclick = async (e) => {
   const b = e.target.closest("button");

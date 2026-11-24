@@ -105,7 +105,13 @@
           <h3 style="margin:0">🏆 Crew leaderboard</h3>
           <div class="row"><span class="grow">Show the leaderboard to guests</span>
             <label class="switch"><input type="checkbox" id="showBoard"><span></span></label></div>
-          <p class="small muted" style="margin:0">"Tonight" starts fresh at 6 AM each day. Reset wipes tonight and all-time counts.</p>
+          <div>
+            <label>Same person, two names? Merge them</label>
+            <div class="merge-row"><select id="mergeFrom" aria-label="Name to merge"></select><span class="muted">into</span><select id="mergeInto" aria-label="Name to keep"></select></div>
+            <button class="btn btn-small" id="mergeBtn" style="margin-top:8px">Merge</button>
+          </div>
+          <div id="merges"></div>
+          <p class="small muted" style="margin:0">Reset wipes every count and merge.</p>
           <button class="btn-danger" id="resetBoard">Reset leaderboard</button>
         </div>
       </section>

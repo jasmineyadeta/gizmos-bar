@@ -494,7 +494,8 @@ revoke execute on function public.place_order(text, uuid, text) from public, ano
 grant execute on function public.place_order(text, uuid, text) to service_role;
 
 -- Crew leaderboard (Jas, 2026-11-24). One row per drink ordered, kept apart from orders so
--- "Clear finished" doesn't wipe the board. Names are merged ignoring case and spaces.
+-- "Clear finished" doesn't wipe the board. All-time only. Names count exactly as typed
+-- (only stray spaces are ignored); Gizmo merges duplicates by hand in admin.
 create table if not exists public.tallies (
   id bigint generated always as identity primary key,
   name_key text not null,
@@ -506,7 +507,7 @@ alter table public.tallies enable row level security;
 alter table public.settings add column if not exists show_board boolean not null default true;
 
 create or replace function public.name_key(n text) returns text
-language sql immutable as $$ select lower(regexp_replace(trim(coalesce(n, '')), '\s+', ' ', 'g')) $$;
+language sql immutable as $$ select regexp_replace(trim(coalesce(n, '')), '\s+', ' ', 'g') $$;
 
 create or replace function public.add_tally() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -551,5 +552,87 @@ language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_owner() then raise exception 'not allowed'; end if;
   delete from public.tallies;
+end $$;
+grant execute on function public.reset_leaderboard() to anon, authenticated;
+
+-- Jas (2026-11-24): exact names, no automatic merging. Re-key rows made by the earlier version.
+do $$
+begin
+  if not exists (select 1 from public.seed_log where key = 'tallies-exact-v1') then
+    update public.tallies set name_key = public.name_key(display), display = public.name_key(display);
+    insert into public.seed_log (key) values ('tallies-exact-v1');
+  end if;
+end $$;
+
+-- Merges are stored as links (alias -> canonical name), so they can be undone.
+create table if not exists public.name_aliases (
+  alias text primary key,
+  canonical text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.name_aliases enable row level security;
+drop function if exists public.merge_names(text, text);
+drop function if exists public.crew_names();
+
+create or replace function public.leaderboard(p_scope text)
+returns table (name text, drinks bigint)
+language sql stable security definer set search_path = public as $$
+  select coalesce(a.canonical, t.name_key), count(*)
+    from public.tallies t
+    left join public.name_aliases a on a.alias = t.name_key
+   where (select show_board from public.settings where id = 1)
+   group by coalesce(a.canonical, t.name_key)
+   order by count(*) desc, max(t.created_at) asc
+   limit 10
+$$;
+grant execute on function public.leaderboard(text) to anon, authenticated;
+
+-- Every name as typed, its own count, and what it's merged into (for the admin tool).
+create or replace function public.crew_names()
+returns table (name text, drinks bigint, merged_into text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  return query
+    select n.k, coalesce(c.cnt, 0), a.canonical
+      from (select name_key as k from public.tallies union select alias from public.name_aliases
+            union select canonical from public.name_aliases) n
+      left join (select name_key, count(*) cnt from public.tallies group by name_key) c on c.name_key = n.k
+      left join public.name_aliases a on a.alias = n.k
+     order by lower(n.k), n.k;
+end $$;
+grant execute on function public.crew_names() to anon, authenticated;
+
+create or replace function public.merge_names(p_from text, p_into text) returns void
+language plpgsql security definer set search_path = public as $$
+declare f text := public.name_key(p_from); t text;
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  -- swapping direction: "into" was merged into "from", so free it first
+  delete from public.name_aliases where alias = public.name_key(p_into) and canonical = f;
+  -- merging into a name that is itself merged goes to its final name
+  select coalesce((select canonical from public.name_aliases where alias = public.name_key(p_into)), public.name_key(p_into)) into t;
+  if f = '' or t = '' or f = t then return; end if;
+  update public.name_aliases set canonical = t where canonical = f;   -- keep chains flat
+  insert into public.name_aliases (alias, canonical) values (f, t)
+    on conflict (alias) do update set canonical = excluded.canonical;
+  delete from public.name_aliases where alias = canonical;
+end $$;
+grant execute on function public.merge_names(text, text) to anon, authenticated;
+
+create or replace function public.unmerge_name(p_alias text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  delete from public.name_aliases where alias = public.name_key(p_alias);
+end $$;
+grant execute on function public.unmerge_name(text) to anon, authenticated;
+
+create or replace function public.reset_leaderboard() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_owner() then raise exception 'not allowed'; end if;
+  delete from public.tallies;
+  delete from public.name_aliases;
 end $$;
 grant execute on function public.reset_leaderboard() to anon, authenticated;
